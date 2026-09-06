@@ -34,6 +34,8 @@ from drugos.pk.partitions import partition_from_molecule
 from drugos.pk.pbpk_build import AbsorptionParams, PBPKModel
 from drugos.pk.physiology import HumanPhysiology
 from drugos.pk.simulate import PBPKResult, PkMetrics, compute_pk_metrics, simulate_pbpk
+from drugos.rbridge import RVerify
+from drugos.rbridge import verify_pk as _r_verify_pk
 from drugos.target.occupancy import (
     PanelEngagement,
     TargetOccupancyResult,
@@ -138,6 +140,7 @@ class RunResult:
     exposure: ExposureProfile
     toxicity: ToxicityReport
     verdict: str
+    r_verify: RVerify | None = None
 
     def to_contract(self) -> dict[str, Any]:
         """Serialize the full run to the doc/03 report contract."""
@@ -235,6 +238,7 @@ class RunResult:
                     "cns_ic50_nm": self.exposure.cns_ic50_nm,
                 },
             },
+            "r_verify": None if self.r_verify is None else self.r_verify.to_dict(),
         }
 
 
@@ -337,7 +341,11 @@ def _organ_state(
     liver_params = spec.liver_params or liver_params_from_panel(spec.panel)
     liver = simulate_liver(pk.t, liver_free, spec.mw, params=liver_params, n_eval=spec.n_eval)
 
-    block = _herg_occupancy(panel, pk.t, liver_free, spec.mw, spec.qt_ic50_nm, spec.n_eval)
+    # hERG channel blockade is at the myocardium, so drive it with the PBPK
+    # cardiac (heart) free tissue exposure, not the hepatic one.
+    block = _herg_occupancy(
+        panel, pk.t, pk.unbound_tissues["heart"], spec.mw, spec.qt_ic50_nm, spec.n_eval
+    )
     cardiac = simulate_cardiac(pk.t, block, model.physiology, n_eval=spec.n_eval)
 
     kidney_free = pk.unbound_tissues["kidney"]
@@ -349,11 +357,13 @@ def _organ_state(
         scr_base_umol_l=_DEFAULT_SCR_BASE_UMOL_L,
     )
 
+    # CNS is driven by the PBPK brain compartment free exposure (which already
+    # folds in the brain:plasma unbound partition ratio), so kpu_brain=1.0.
     cns = simulate_cns(
         pk.t,
-        pk.plasma_free,
+        pk.unbound_tissues["brain"],
         spec.mw,
-        CnsParams(ic50_nm=spec.cns_ic50_nm or _CNS_IC50_DEFAULT_NM),
+        CnsParams(ic50_nm=spec.cns_ic50_nm or _CNS_IC50_DEFAULT_NM, kpu_brain=1.0),
     )
 
     pathway: PathwayResult | None = None
@@ -434,6 +444,7 @@ def run_pipeline(spec: RunSpec) -> RunResult:
         exposure=exposure,
         toxicity=toxicity,
         verdict=_verdict(toxicity),
+        r_verify=_r_verify_pk(pk.t, pk.plasma_total, pk.dose_mg),
     )
 
 

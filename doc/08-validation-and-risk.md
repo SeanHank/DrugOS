@@ -33,6 +33,8 @@ Each stage is validated independently against its own literature before coupling
 | Stage 5 toxicity | Risk ordering vs known clinical safety profiles on held-out set | implemented — dofetilide > warfarin QTc, APAP 20g > 1g DILI, CNS class-prior fallback, driver attribution (L3 ordering case) |
 | Stage 5 clinical | Analytic point-matches of the fusion equations (exposure line, prior-only posterior, grade ladder, crossing windows) | implemented (L2 grading case), exact |
 | Robustness D21-D24 | Determinism + CI bookkeeping of the three engines + prospective rerun | implemented (L1 D21-D24 + D24 prospective case), exact |
+| R-1 R literature-PK cross-check | Required-R bridge (`src/drugos/rbridge/literature_pk.R`, Wagner 1976 / Gibaldi & Perrier 1982 / Greenblatt & Koch-Weser 1975 / Rowland & Tozer 2010) re-derives CL/AUC/t½/tipping-fit from the same simulated curve; assert |CL_R − CL_py|/CL_py ≤ 2 % and `r:agree` on all 5 benchmarks | implemented (L3, `case_r_bridge`) |
+| R-2 corpus calibration | Vendored measured corpora cross-check: dofetilide ChEMBL hERG IC50 (geomean ≈ 26 nM, outlier ≥ 10 µM excluded) is high-affinity (< 100 nM); model class prior (2 nM) within 20× of measured (conservative); hERG-Central % inhibition at 1 µM is a long tail (median ≈ 8 %, P99.9 ≈ 32 %) → per-compound hERG override is the honest choice | implemented (L3, `case_corpus_calibration`) |
 
 ### 1.3 Tier 3 — Prospective-Style Evaluation
 
@@ -44,7 +46,8 @@ Each stage is validated independently against its own literature before coupling
 - Unit tests per stage on analytic/limiting-case solutions (e.g., one-compartment bolus analytic vs numeric; zero-dose baseline recovery to steady state).
 - Golden-file regression tests on benchmark compounds.
 - Data-contract schema tests at every stage boundary.
-- **G4 rule:** every new model feature must add a validation case before merge; `python validation/run_validation.py` (18/18 cases green, see `validation/report.md`) regenerates the report and fails the gate on any red case.
+- **G4 rule:** every new model feature must add a validation case before merge; `python validation/run_validation.py` (20/20 cases green, see `validation/report.md`) regenerates the report and fails the gate on any red case.
+- **R is a hard runtime dependency:** a pipeline run without R raises (no silent solver-substitution); each `run_pipeline` streams an `r_verify` block into the JSON contract and the report.
 
 ## 2. Risk Assessment
 

@@ -5,7 +5,20 @@
 - **Canonical Python interpreter (project-wide):** `/opt/anaconda3/envs/drug_os/bin/python`
   - All development, execution, and CI-facing commands use this interpreter (or the `drug_os` Conda environment; `conda run -n drug_os ...`).
   - The interpreter is pinned to Python 3.11+; **do not** call a system/global `python`.
-- **Optional R** integration via `rpy2` for literature-standard pharmacometric packages (not required for the baseline release).
+- **Required R** integration via `rpy2` (>= 3.6, hard dependency in
+  `pyproject.toml`) — every pipeline run verifies the clearance/AUC estimator
+  against the **original literature equations in R**
+  (`src/drugos/rbridge/literature_pk.R`: Wagner 1976, Gibaldi & Perrier 1982,
+  Greenblatt & Koch-Weser 1975, Rowland & Tozer 2010). The bridge lives in
+  `src/drugos/rbridge/` (100%-branch tested, `stubs/rpy2/robjects.pyi` for
+  mypy) and is exercised by validation case R-1. A missing R runtime is a hard
+  error — never a silent fallback. For local R: R >= 4 are supported
+  (`/usr/local/bin/R` macOS Homebrew; conda `r-base`). The standalone,
+  off-gate R cross-validation harness `scripts/r_crossval/` (base-R) remains
+  as an independent second estimator lane.
+- Runtime requirement: `R` / `Rscript` must be on `PATH` at import time of
+  `drugos.rbridge`; verdicts stream to the `r_verify` contract block and the
+  web report.
 
 ## 2. Core Stack by Concern
 

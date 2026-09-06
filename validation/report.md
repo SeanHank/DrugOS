@@ -1,7 +1,7 @@
 # DrugOS Validation Report
 
-- Status: **PASS** (18/18 cases passed)
-- Generated: 2026-09-06 00:53 UTC
+- Status: **PASS** (20/20 cases passed)
+- Generated: 2026-09-06 12:26 UTC
 - DrugOS version: 2026.9.0
 - Interpreter: /opt/anaconda3/envs/drug_os/bin/python
 - Fold-error allowance: within 2x of the published band centre (doc/08 Tier 2, GMFE <= 2); Fa bands additionally clamp to 1.
@@ -49,7 +49,11 @@
 |  |  | grade_ladder_higher | 2 [2, 2] grade | pass |
 |  |  | grade_ladder_lower | 2 [2, 2] grade | pass |
 |  |  | crossing_onset_duration | 1 [1, 1] h | pass |
-| Stage-5 composite risk ordering vs clinical anchors | L3 | dofetilide_qt_risk | 0.8134 [0.7, 0.95] P(risk) | pass |
+| Corpus calibration cross-check (R-2) | L3 | dofetilide_herg_measured_geomean_nm | 26.4 [0, 100] nM | pass |
+|  |  | model_prior_to_measured_ratio | 0.07575 [0.05, 20] fold | pass |
+|  |  | herg_corpus_median_pct_inh_at_1uM | 8.254 [0, 30] % inhibition | pass |
+|  |  | herg_corpus_p99_9_pct_inh_at_1uM | 31.64 [25, 100] % inhibition | pass |
+| Stage-5 composite risk ordering vs clinical anchors | L3 | dofetilide_qt_risk | 0.5259 [0.45, 0.95] P(risk) | pass |
 |  |  | warfarin_qt_risk | 0.0053 [0, 0.35] P(risk) | pass |
 |  |  | acetaminophen_20g_dili_risk | 0.97 [0.6, 1] P(risk) | pass |
 |  |  | acetaminophen_1g_dili_risk | 0.1177 [0, 0.4] P(risk) | pass |
@@ -67,6 +71,9 @@
 | D24 prospective rerun fidelity (dofetilide QTc) | L1 | test_retest_max_risk_diff | 0 [0, 0] P(risk) | pass |
 |  |  | held_out_subject_qt_risk | 0.8345 [0.7, 0.99] P(risk) | pass |
 |  |  | held_out_verdict_disagreements | 0 [0, 0] count | pass |
+| R literature-PK cross-check (R-1) | L3 | r_literature_cl_agreement_max | 1.931e-15 [0, 0.02] fraction | pass |
+|  |  | r_verdicts_not_agree | 0 [0, 0] count | pass |
+|  |  | r_two_comp_fits | 0 [0, 5] count | pass |
 
 ## Evidence levels
 
@@ -80,7 +87,7 @@ Results are graded by how much epistemic weight they carry (doc/08 §1.1-1.4 tie
 
 Per-level status:
 
-- **L3** (Empirically anchored (Tier 1)): 7/7 cases green.
+- **L3** (Empirically anchored (Tier 1)): 9/9 cases green.
 - **L2** (Analytic / mechanistic limit (Tier 2)): 7/7 cases green.
 - **L1** (Internal consistency / CI (Tier 3)): 4/4 cases green.
 
@@ -100,10 +107,12 @@ Per-level status:
 - **cardiac QTc prolongation (dofetilide hERG)**: 0.5 mg dofetilide peak Delta-QTc 20.2 ms vs published ~20-60 ms/QTc-prolonging clinical band (low-nM hERG block); warfarin control 0.02 ms.  Published: dofetilide (Tikosyn) USPI lists QT/QTc prolongation; peak Delta-QTc in the 0.5 mg single-dose range is around 10-35 ms and TdP aggregates in QTc > 500 ms.
 - **kidney GFR/AKI escalation (KDIGO)**: closed-form Scr=P/GFR exact at zero exposure; 1.0 mg/L free kidney exposure -> Scr ratio 4.54 (KDIGO stage 3) vs 1.001 (stage 0); GFR floor 26 mL/min.  KDIGO criteria: Scr x2 -> stage 2, x3 -> stage 3 (or GFR drop).
 - **Stage-5 clinical grading: analytic point-matches**: Exposure ROC line reproduces the closed form sigmoid(1.2*(0.0 - (-1.3))) = 0.8264; empty-evidence fusion returns the DILI prior 0.25 exactly; grade ladder and crossing windows match the CTCAE conventions of doc/05 5.1-5.2.
-- **Stage-5 composite risk ordering vs clinical anchors**: dofetilide QT 0.813 (qt-driven) > warfarin QT 0.005; APAP 20 g DILI 0.970 > 1 g DILI 0.118 (dili-driven); unanchored CNS sits on the 0.20 class prior.  Published anchors: dofetilide (Tikosyn) is a QT-prolonging hERG blocker and is contraindicated with renal/QT risk; massive acetaminophen overdose causes centrilobular hepatic necrosis (DILI), while warfarin is not a QT liability.
+- **Corpus calibration cross-check (R-2)**: dofetilide ChEMBL hERG IC50 geomean 26.4 nM (core rows, outlier >=10 uM excluded; regen by scripts/data/fetch_chembl_herg.py); model class prior 2.0 nM = 0.1x of measured (conservative direction, within the 20x envelope). hERG Central corpus: 306893 PMID-anchored rows; median %inhibition at 1 uM = 8.3, P99.9 = 31.6 (blockade is the exception, so a per-compound hERG override is the honest modelling choice).
+- **Stage-5 composite risk ordering vs clinical anchors**: dofetilide QT 0.526 (qt-driven) > warfarin QT 0.005; APAP 20 g DILI 0.970 > 1 g DILI 0.118 (dili-driven); unanchored CNS sits on the 0.20 class prior.  Published anchors: dofetilide (Tikosyn) is a QT-prolonging hERG blocker and is contraindicated with renal/QT risk; massive acetaminophen overdose causes centrilobular hepatic necrosis (DILI), while warfarin is not a QT liability.
 - **Phase-6 robustness engines: D21-D24 self-consistency**: Fixed-seed D21 ensemble reproduces itself exactly (max median-band diff 0); 90% band monotone with 0 violations; D22 cohort incidence non-negative; D23 first/total indices inside [-1,1]/[0,1]; DILI risk strictly decreases with a rising IC50 (-0.4624 per +10% IC50).
 - **SC/IM depot analytic (Bateman single pool)**: V=66.4 L, ka=0.3/h, F=0.9; analytic Cmax=0.123 mg/L, Tmax=12.6 h, AUC=18.0 mg.h/L
-- **D24 prospective rerun fidelity (dofetilide QTc)**: Repeated identical runs agree to 0.0e+00 in risk and keep verdict 'High composite risk (81%, driver qt)'; an independent female-70 profile also sustains the high-QT regime (dofetilide QT 0.835, driver qt).  Basis: reproducibility is the precondition of the runbook; the QTc band itself is anchored by the L3 dofetilide Tier-1 case (see case_cardiac_qtc).
+- **D24 prospective rerun fidelity (dofetilide QTc)**: Repeated identical runs agree to 0.0e+00 in risk and keep verdict 'High composite risk (53%, driver qt)'; an independent female-70 profile also sustains the high-QT regime (dofetilide QT 0.835, driver qt).  Basis: reproducibility is the precondition of the runbook; the QTc band itself is anchored by the L3 dofetilide Tier-1 case (see case_cardiac_qtc).
+- **R literature-PK cross-check (R-1)**: worst |CL_r - CL_py|/CL_py over midazolam / acetaminophen / warfarin / ciprofloxacin / dofetilide: 1.93e-15 (acetaminophen); midazolam=r:agree / acetaminophen=r:agree / warfarin=r:agree / ciprofloxacin=r:agree / dofetilide=r:agree; method-of-residuals two-comp fits: 0/5
 
 ## Tier-1 geometric-mean fold error (L3 asserted metrics)
 

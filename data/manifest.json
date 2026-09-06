@@ -1,5 +1,5 @@
 {
-  "version": "2026.9.0",
+  "version": "2026.9.1",
   "about": "Data manifest for the DrugOS repository. Every vendored file under data/ is pinned by sha256; scripts/release.py gates verifies each checksum and fails the release on any mismatch (tampering, silent edits, or accidental drift). Sources that are distributed as packages (ADMET-AI, RDKit, terbapy-style model weights) or are license-restricted bulk downloads are documented in data/README.md and fetched via package managers; they are never vendored here.",
   "files": [
     {
@@ -9,6 +9,22 @@
       "license": "Published numeric ranges; cited academic use. No bulk redistribution of third-party text.",
       "status": "vendored",
       "retrieved_utc": "2026-09-05T23:27:39Z"
+    },
+    {
+      "path": "benchmarks/herg_measured_nm.json",
+      "sha256": "11ade8410eacd20256c28063576719b14bda32d72a56f908182c521cd5784726",
+      "source": "ChEMBL REST API (www.ebi.ac.uk/chembl, target CHEMBL240 hERG) IC50 rows for the five-benchmark molecules; dofetilide only has public hERG IC50 measurements. Regenerated reproducibly by scripts/data/fetch_chembl_herg.py.",
+      "license": "ChEMBL data is CC0/public-domain summary; reprocessed numeric values presented here.",
+      "status": "vendored",
+      "retrieved_utc": "2026-09-06T11:53:57Z"
+    },
+    {
+      "path": "corpora/herg_central.tsv.gz",
+      "sha256": "d44a4e14bcbf815f4ea0f16c5a45c61c91f8db6aa3773d324c811cd8cf39886e",
+      "source": "hERG Central dose-response corpus (Du et al., J Chem Inf Model 2022), Harvard Dataverse doi:10.7910/DVN/7BVDG8 (datafile 5724875); provenance of the TDC 'Herg' benchmark; 306,893 PMID-anchored rows (X = %inhibition at 1 uM / 10 uM, binary hERG_inhib label).",
+      "license": "Harvard Dataverse public dataset (CC0 public-domain release by authors).",
+      "status": "vendored",
+      "retrieved_utc": "2026-09-06T10:40:00Z"
     }
   ]
 }

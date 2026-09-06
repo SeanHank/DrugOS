@@ -37,6 +37,7 @@ Simulations Plus ADMET Predictor + GastroPlus use the ACAT (Advanced Compartment
 
 - **SciPy-native ODE stack (selected over PySB/pysb-pkpd)**: PySB provides rule-based construction of PK/PD and QSP/QST ODE models, but its `sympy<1.12` dependency pin conflicts with the modern torch/admet-ai line (`sympy>=1.13.3`). Per the resolution recorded in `06-technology-stack.md`, the baseline implements all ODE systems (compartmental PK, occupancy, pathway) directly with `scipy.integrate.solve_ivp` (LSODA/Radau); any number of compartments is supported.
 - **OpenPKPD**: open-source population PK/PD toolkit with NONMEM-style control streams, SAEM/NUTS estimation, VPC, SBML import, PBPK, TMDD and DDE support — a candidate for the downstream pharmacometric/estimation layer.
+- **R literature estimators (required, in-package)**: the clearance/AUC/t½/reduction-of-boxes fit is taken from the *original* literature equations implemented in R (`src/drugos/rbridge/literature_pk.R`): log-linear terminal t½ + trapezoidal AUC with tail correction (Wagner 1976; Gibaldi & Perrier 1982), one-compartment CL derivation (Rowland & Tozer 2010), and the two-phase "method of residuals" bi-exponential peel (Greenblatt & Koch-Weser 1975). Every `run_pipeline` cross-verifies the numpy twin against this R implementation (validation case R-1) so the shipped numbers are always the literature-method numbers, not a second Python solitaire.
 
 ---
 

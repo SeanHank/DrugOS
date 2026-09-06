@@ -4,13 +4,17 @@
       63
     ],
     "src/drugos/cli.py": [
-      220,
-      352
+      224,
+      356
+    ],
+    "src/drugos/rbridge/__init__.py": [
+      117
     ]
   },
   "notes": {
     "src/drugos/web/app.py:63": "converts retrieval/spec errors into an explicit HTTP 400 JSON error body (return jsonify({'error': ...}), 400).",
-    "src/drugos/cli.py:220": "prints the error to stderr and returns a nonzero exit code (message surfaced to the user).",
-    "src/drugos/cli.py:352": "same pattern for the study command: stderr message + nonzero exit code."
+    "src/drugos/cli.py:224": "prints the error to stderr and returns a nonzero exit code (message surfaced to the user).",
+    "src/drugos/cli.py:356": "same pattern for the study command: stderr message + nonzero exit code.",
+    "src/drugos/rbridge/__init__.py:117": "converts rpy2/R import failure into an explicit RuntimeError with install guidance (required-R policy; no silent fallback)."
   }
 }

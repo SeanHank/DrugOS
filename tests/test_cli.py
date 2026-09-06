@@ -170,6 +170,8 @@ def test_smiles_spec_success(monkeypatch: pytest.MonkeyPatch) -> None:
     assert spec.mw == 150.0
     assert spec.fup == 0.4
     assert spec.dose_plan.events[0].dose_mg == 20.0
+    # Renal clearance is derived from GFR * fup (male 40 y -> 125 mL/min).
+    assert spec.cl_renal_l_h == pytest.approx(3.0)
     assert spec.admet is not None
 
 

@@ -8,6 +8,7 @@ import pytest
 
 import drugos.pipeline as pl
 from drugos.clinical.toxicity import Endpoint, EndpointRisk, Evidence, EvidenceKind, ToxicityReport
+from drugos.organ import free_mg_l_to_nm
 from drugos.pipeline import (
     RunSpec,
     _BenchmarkLike,
@@ -101,8 +102,36 @@ def test_run_pipeline_warfarin(fast_warfarin: RunSpec) -> None:
     assert "brain_free_nm" in contract["organ"]["trajectories"]
     traj = contract["organ"]["trajectories"]
     assert len({len(v) for v in traj.values()}) == 1, "trajectories must share one time grid"
+    # CNS is driven by the PBPK brain compartment free exposure (kpu_brain=1.0):
+    # the reported brain free peak equals the free brain tissue peak in nM.
+    brain_free_nm_pk = float(
+        free_mg_l_to_nm(result.pk.unbound_tissues["brain"].max(), result.spec.mw)
+    )
+    assert result.organ.cns.peak_brain_free_nm == pytest.approx(brain_free_nm_pk, rel=1e-3)
+    # hERG cardiac block now comes from the heart free exposure: warfarin has
+    # negligible cardiac free exposure so its delta-QTc stays sub-millisecond.
+    assert float(result.organ.cardiac.delta_qtc_ms.max()) < 1.0
     assert contract["clinical"]["exposure"]["cns_ic50_nm"] == 1.0e5
     assert result.exposure.cns_anchored is False
+
+
+def test_run_pipeline_r_verify_present(fast_warfarin: RunSpec) -> None:
+    result = run_pipeline(fast_warfarin)
+    assert result.r_verify is not None
+    verify = result.to_contract()["r_verify"]
+    assert verify["verdict"] == "r:agree"
+    assert verify["agreement_frac"] <= 0.02
+    assert isinstance(verify["py_cl_l_h"], float)
+
+
+def test_run_pipeline_r_verify_unavailable_contract(
+    fast_warfarin: RunSpec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(pl, "_r_verify_pk", lambda *_: None)
+    result = run_pipeline(fast_warfarin)
+    contract = result.to_contract()
+    assert result.r_verify is None
+    assert contract["r_verify"] is None
 
 
 def test_run_pipeline_apap_od_high_dili(fast_apap_od: RunSpec) -> None:

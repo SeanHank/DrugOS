@@ -111,6 +111,7 @@ def _smiles_spec(args: _RunInputs) -> RunSpec:
     """Spec for a custom SMILES using structure + ADMET-AI predicted PK."""
     from drugos.inputs.parse_structure import parse_structure
     from drugos.pk.admet import predict_admet
+    from drugos.pk.physiology import build_human, glom_filtration_clearance
 
     assert args.smiles is not None
     mol = parse_structure(args.smiles, name="custom")
@@ -127,15 +128,18 @@ def _smiles_spec(args: _RunInputs) -> RunSpec:
         raise ValueError("ADMET-AI did not return hepatic intrinsic clearance")
     weight_kg = args.weight
     cl_hep = cl_int * 60.0 / 1000.0 * weight_kg  # mL/min/kg -> L/h (gross scaling)
+    profile = HumanProfile(
+        sex=Sex(args.sex), age_y=args.age, height_cm=args.height, weight_kg=weight_kg
+    )
+    physiology = build_human(profile)
+    cl_renal = glom_filtration_clearance(physiology.gfr_l_min * 1000.0, fup)
     return RunSpec(
         name=mol.name or "custom",
         molecule=mol,
-        profile=HumanProfile(
-            sex=Sex(args.sex), age_y=args.age, height_cm=args.height, weight_kg=weight_kg
-        ),
+        profile=profile,
         dose_plan=build_dose_plan(args.route or "oral", args.dose or 10.0),
         cl_hep_l_h=cl_hep,
-        cl_renal_l_h=0.0,
+        cl_renal_l_h=cl_renal,
         mw=mw,
         fup=fup,
         bp=1.0,

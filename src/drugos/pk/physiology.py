@@ -284,6 +284,23 @@ def _organ_flows(profile: HumanProfile, co: float) -> dict[str, float]:
     return flows
 
 
+def glom_filtration_clearance(gfr_ml_min: float, fup: float, fe_unchanged: float = 1.0) -> float:
+    """Passive glomerular-filtration component of renal clearance (L/h).
+
+    For a predominantly filtered drug, renal clearance CLr = fup * GFR projected
+    to L/h, weighted by the fraction of the administered dose excreted unchanged
+    (``fe_unchanged``).  Secretory/reabsorptive balance that is not measured is
+    folded into ``fe_unchanged`` (default 1.0 = pure filtration).
+    """
+    if gfr_ml_min <= 0:
+        raise ValueError("gfr_ml_min must be positive")
+    if not (0.0 < fup <= 1.0):
+        raise ValueError("fup must be in (0, 1]")
+    if not (0.0 <= fe_unchanged <= 1.0):
+        raise ValueError("fe_unchanged must be in [0, 1]")
+    return fup * (gfr_ml_min / 1000.0) * 60.0 * fe_unchanged
+
+
 def build_human(profile: HumanProfile) -> HumanPhysiology:
     """Resolve a sparse :class:`HumanProfile` into a full physiology set."""
     sex = profile.sex

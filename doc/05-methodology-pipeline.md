@@ -212,7 +212,7 @@ Mechanistic sub-models:
 - **hERG/QT axis**: from hERG blockade fraction (Stage 2 off-target), estimate IKr reduction and a QTc-prolongation model (multiplicative / Emax on hERG channel current; literature QTc-hERG relationships). Maps to torsades-de-pointes risk band.
 - **Inotropy/chronotropy modulators**: beta/catecholamine pathway effects feed into contractility and rate.
 
-> **Implemented (2026.9.0):** `src/drugos/organ/cardiac.py` — `predict_qtc()` Emax hERG->IKr->QTc axis with TdP banding (450/480/500 ms) and a two-compartment Windkessel (`simulate_hemodynamics()`) for MAP/CVP/CO/SV. Validated: 0.5 mg dofetilide peak Delta-QTc 20 ms lies in the published prolongation band vs a negligible-hERG control (L3 case).
+> **Implemented (2026.9.0):** `src/drugos/organ/cardiac.py` — `predict_qtc()` Emax hERG->IKr->QTc axis with TdP banding (450/480/500 ms) and a two-compartment Windkessel (`simulate_hemodynamics()`) for MAP/CVP/CO/SV. The hERG blockade fraction is driven by the **PBPK cardiac (heart) free exposure** (`unbound_tissues["heart"]`), not the hepatic one. Validated: 0.5 mg dofetilide peak Delta-QTc 20 ms lies in the published prolongation band vs a negligible-hERG control (L3 case).
 
 ### 4.4 Kidney — Nephron + GFR Model
 

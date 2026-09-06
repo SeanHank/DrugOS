@@ -33,6 +33,7 @@ dependencies = [
     "admet-ai>=2.0",
     "torch>=2.8",
     "flask>=3.0",
+    "rpy2>=3.6",
 ]
 
 [project.scripts]
@@ -57,7 +58,7 @@ package-dir = { "" = "src" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-drugos = ["py.typed", "web/templates/*.html"]
+drugos = ["py.typed", "web/templates/*.html", "rbridge/*.R"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

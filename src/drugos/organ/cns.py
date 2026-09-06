@@ -5,6 +5,10 @@ neuropharmacodynamic model, the CNS panel applies the free-drug hypothesis:
 the unbound interstitial brain concentration tracks the unbound plasma
 concentration (rapid passive equilibration across an intact/passive BBB for
 small molecules), scaled by a brain:plasma unbound partition ``kpu_brain``.
+Inside the pipeline the driver is the PBPK brain compartment free exposure
+(``simulate_cns`` receives ``unbound_tissues["brain"]`` with ``kpu_brain=1.0``)
+so the brain partition used is the Rodgers–Rowland value already computed for
+the brain tissue, and ``kpu_brain`` here is the residual scale for direct calls.
 
 An exposure-ratio grade (Cmax_brain_free / IC50) is derived from CTCAE-style
 margin thresholds, exactly parallel to how ``drugos.organ.kidney`` interprets

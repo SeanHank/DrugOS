@@ -19,6 +19,7 @@ from validation.cases.base import (
 from validation.cases.case_benchmarks import evaluate_benchmark
 from validation.cases.case_cardiac_qtc import case_cardiac_qtc
 from validation.cases.case_clinical_grading import case_clinical_grading
+from validation.cases.case_corpus_calibration import case_corpus_calibration
 from validation.cases.case_dose_proportionality import case_dose_proportionality
 from validation.cases.case_kidney_gfr import case_kidney_gfr
 from validation.cases.case_liver_dose_response import case_liver_dose_response
@@ -26,6 +27,7 @@ from validation.cases.case_mass_balance import case_mass_balance
 from validation.cases.case_occupancy_equilibrium import case_occupancy_equilibrium
 from validation.cases.case_pathway_amplification import case_pathway_amplification
 from validation.cases.case_prospective_fidelity import case_prospective_fidelity
+from validation.cases.case_r_bridge import case_r_bridge
 from validation.cases.case_risk_ordering import case_risk_ordering
 from validation.cases.case_robustness_sanity import case_robustness_sanity
 from validation.cases.case_sc_im_depot import case_sc_im_depot
@@ -43,10 +45,12 @@ def run_all() -> list[CaseResult]:
     results.append(case_cardiac_qtc())
     results.append(case_kidney_gfr())
     results.append(case_clinical_grading())
+    results.append(case_corpus_calibration())
     results.append(case_risk_ordering())
     results.append(case_robustness_sanity())
     results.append(case_sc_im_depot())
     results.append(case_prospective_fidelity())
+    results.append(case_r_bridge())
     return results
 
 

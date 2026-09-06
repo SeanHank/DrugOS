@@ -6,7 +6,12 @@ import math
 import pytest
 
 from drugos.inputs.models import HumanProfile, Sex
-from drugos.pk.physiology import PORTAL_DRAINING_TISSUES, build_human, mosteller_bsa
+from drugos.pk.physiology import (
+    PORTAL_DRAINING_TISSUES,
+    build_human,
+    glom_filtration_clearance,
+    mosteller_bsa,
+)
 
 MALE = Sex.MALE
 FEMALE = Sex.FEMALE
@@ -107,3 +112,21 @@ def test_hepatic_impairment_and_heart_failure() -> None:
 def test_scaling_tracks_weight() -> None:
     heavy = _phys(weight_kg=90.0)
     assert heavy.organ_volume["liver"] > _phys().organ_volume["liver"]
+
+
+def test_glom_filtration_clearance() -> None:
+    # 125 mL/min, fup 0.4, pure filtration -> 0.4*0.125 L/min*60 = 3.0 L/h.
+    assert glom_filtration_clearance(125.0, 0.4) == pytest.approx(3.0)
+    # fe folds in net secretion/reabsorption.
+    assert glom_filtration_clearance(125.0, 0.4, fe_unchanged=0.5) == pytest.approx(1.5)
+    assert glom_filtration_clearance(125.0, 0.4, fe_unchanged=0.0) == pytest.approx(0.0)
+    with pytest.raises(ValueError):
+        glom_filtration_clearance(0.0, 0.4)
+    with pytest.raises(ValueError):
+        glom_filtration_clearance(125.0, 0.0)
+    with pytest.raises(ValueError):
+        glom_filtration_clearance(125.0, 1.1)
+    with pytest.raises(ValueError):
+        glom_filtration_clearance(125.0, 0.4, fe_unchanged=-0.1)
+    with pytest.raises(ValueError):
+        glom_filtration_clearance(125.0, 0.4, fe_unchanged=1.1)
