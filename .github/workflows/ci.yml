@@ -17,7 +17,7 @@ jobs:
   # G1-G4 release quality gate + no-silent-fallback audit (doc/09).
   # A failing gate blocks build/release.
   quality:
-    name: quality gate (G1-G4)
+    name: quality gates
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,7 +34,8 @@ jobs:
           test -n "$VERSION"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
       - name: Run release quality gate + fallback audit
-        run: python scripts/release.py gates
+        # G3 runs with base pytest (--no-xdist): no pytest-xdist in CI.
+        run: python scripts/release.py gates --no-xdist
       - name: Upload gate log and validation report
         if: always()
         uses: actions/upload-artifact@v4

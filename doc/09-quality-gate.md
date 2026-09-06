@@ -15,7 +15,7 @@ successor of the former `quality_gate.sh`) and in CI by the `ci.yml` workflow.
 |---|---|---|
 | G1 | `ruff check` + `ruff format --check` | zero findings, zero violations of configured rules, zero `format` diffs |
 | G2 | `mypy --strict` | zero type errors across `src/drugos` on the pinned `py312` target |
-| G3 | `pytest -n auto` + `coverage` | 100 % branch coverage of `src/drugos`; `fail_under = 100`, run in parallel (pytest-xdist) |
+| G3 | `pytest` + `coverage` | 100 % branch coverage of `src/drugos`; `fail_under = 100`. GitHub CI runs **base pytest only** (`python scripts/release.py gates --no-xdist`); local runs may add `-n auto` (pytest-xdist) for speed |
 | G4 | validation suite | `validation/` runs end-to-end, every case must **pass**, and `validation/report.md` must be regenerated cleanly |
 | G5 | fallback audit | every `except` handler in `src/drugos` must surface an explicit error; the handler inventory is pinned in `scripts/fallback_allowlist.json` and any drift or silent swallow fails the release |
 
@@ -39,9 +39,11 @@ successor of the former `quality_gate.sh`) and in CI by the `ci.yml` workflow.
 
 ### G3 — Coverage
 
-- `pytest -n auto` runs the full `tests/` tree in parallel (pytest-xdist);
-  `coverage` measures `src/drugos` with `fail_under = 100` (statement, function
-  and branch totals recorded in the gate log).
+- `pytest` runs the full `tests/` tree; in GitHub CI this is **base pytest**
+  (`release.py gates --no-xdist`), while local runs may append `-n auto`
+  (pytest-xdist) to parallelize. `coverage` measures `src/drugos` with
+  `fail_under = 100` (statement, function and branch totals recorded in the
+  gate log).
 - **Exclusion rule (strictest in the suite).** Coverage exclusions of any form
   are disallowed:
   - no `# pragma: no cover`,
@@ -93,6 +95,7 @@ successor of the former `quality_gate.sh`) and in CI by the `ci.yml` workflow.
 /opt/anaconda3/envs/drug_os/bin/python -m pytest -n auto               # full suite, parallel
 /opt/anaconda3/envs/drug_os/bin/python validation/run_validation.py   # regenerates validation/report.md
 /opt/anaconda3/envs/drug_os/bin/python scripts/release.py gates       # one-shot: all of the above
+# GitHub CI runs the same gate with base pytest only:  gates --no-xdist
 python scripts/release.py fallback-audit                                # G5 standalone
 ```
 

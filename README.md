@@ -171,8 +171,8 @@ runs G1–G4 and a **no-silent-fallback audit**:
 
 - **G1** ruff (E/F/W/I/UP/B, line length 100) — clean
 - **G2** mypy `--strict` across `src/drugos` — no errors
-- **G3** pytest **in parallel (`-n auto`)** with **100 % branch coverage** of
-  `src/drugos`, no exclusions
+- **G3** pytest with **100 % branch coverage** of `src/drugos`, no
+  exclusions
 - **G4** validation suite — 18/18 green, report regenerated
 - **G5** fallback audit — every `except` handler in the package must surface an
   explicit error; silent swallowing is a hard failure (inventory pinned in
@@ -233,9 +233,6 @@ Start with `doc/01-project-overview.md`, then `doc/05-methodology-pipeline.md`:
 - [CONTRIBUTING.md](CONTRIBUTING.md) — how to add a validation case, open an
   issue, or propose a gate change.
 - [CREDITS.md](CREDITS.md) — tooling, datasets and prior art the platform builds on.
-- [DISCLAIMER.md](DISCLAIMER.md) — legal notices and usage limitations.
-- [doc/08-scope-and-limitations.md](doc/08-scope-and-limitations.md) — what the
-  baseline does **not** claim.
 
 ## License
 

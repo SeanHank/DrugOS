@@ -71,9 +71,7 @@ def read_version() -> str:
 
 def write_version(version: str) -> None:
     text = VERSION_FILE.read_text(encoding="utf-8")
-    updated, n = re.subn(
-        r'__version__\s*=\s*"[^"]+"', f'__version__ = "{version}"', text, count=1
-    )
+    updated, n = re.subn(r'__version__\s*=\s*"[^"]+"', f'__version__ = "{version}"', text, count=1)
     if n != 1:
         raise SystemExit(f"cannot rewrite version in {VERSION_FILE}")
     VERSION_FILE.write_text(updated, encoding="utf-8")
@@ -193,9 +191,7 @@ def _surfaces_explicit_error(node: ast.ExceptHandler) -> bool:
                 if any(
                     isinstance(b, ast.Return)
                     and b.value is not None
-                    and not (
-                        isinstance(b.value, ast.Constant) and b.value.value is None
-                    )
+                    and not (isinstance(b.value, ast.Constant) and b.value.value is None)
                     for b in branch
                 ):
                     return True
@@ -210,7 +206,9 @@ def verify_data_checksums() -> None:
     updated on purpose.
     """
     if not DATA_MANIFEST.exists():
-        raise SystemExit(f"missing data manifest {DATA_MANIFEST}; data checksums cannot be verified")
+        raise SystemExit(
+            f"missing data manifest {DATA_MANIFEST}; data checksums cannot be verified"
+        )
     manifest = json.loads(DATA_MANIFEST.read_text(encoding="utf-8"))
     entries = manifest["files"]
     for entry in entries:
@@ -223,7 +221,9 @@ def verify_data_checksums() -> None:
             raise SystemExit(
                 f"data checksum mismatch for {rel}: manifest {entry['sha256']} != disk {digest}"
             )
-    print(f"data checksums: {len(entries)} file(s) verified against {DATA_MANIFEST.relative_to(ROOT)}")
+    print(
+        f"data checksums: {len(entries)} file(s) verified against {DATA_MANIFEST.relative_to(ROOT)}"
+    )
 
 
 def fallback_audit() -> list[str]:
@@ -263,21 +263,32 @@ def fallback_audit() -> list[str]:
     return violations
 
 
-def run_gates() -> None:
+def run_gates(use_xdist: bool = True) -> None:
     ensure_versions_consistent()
     GATE_LOG.parent.mkdir(parents=True, exist_ok=True)
     with GATE_LOG.open("w", encoding="utf-8") as log:
         log.write("DrugOS release quality gate\n")
-        log.write(f"started {_dt.datetime.now(_dt.timezone.utc).isoformat()}\n")
-    _run_cmd(GATE_LOG, "G1 lint (ruff check)", [python(), "-m", "ruff", "check", "src", "tests", "validation"])
+        log.write(f"started {_dt.datetime.now(_dt.UTC).isoformat()}\n")
+    _run_cmd(
+        GATE_LOG,
+        "G1 lint (ruff check)",
+        [python(), "-m", "ruff", "check", "src", "tests", "validation"],
+    )
     _run_cmd(
         GATE_LOG,
         "G1 format (ruff check-format)",
         [python(), "-m", "ruff", "format", "--check", "src", "tests", "validation"],
     )
-    _run_cmd(GATE_LOG, "G2 types (mypy --strict)", [python(), "-m", "mypy", "--strict", "src/drugos"])
-    _run_cmd(GATE_LOG, "G3 coverage (pytest 100% branch)", [python(), "-m", "pytest", "-n", "auto"])
-    _run_cmd(GATE_LOG, "G4 validation suite", [python(), str(ROOT / "validation" / "run_validation.py")])
+    _run_cmd(
+        GATE_LOG, "G2 types (mypy --strict)", [python(), "-m", "mypy", "--strict", "src/drugos"]
+    )
+    g3_cmd = [python(), "-m", "pytest"]
+    if use_xdist:
+        g3_cmd += ["-n", "auto"]
+    _run_cmd(GATE_LOG, "G3 coverage (pytest 100% branch)", g3_cmd)
+    _run_cmd(
+        GATE_LOG, "G4 validation suite", [python(), str(ROOT / "validation" / "run_validation.py")]
+    )
     with GATE_LOG.open("a", encoding="utf-8") as log:
         try:
             verify_data_checksums()
@@ -360,7 +371,7 @@ def sync_doc09_status(
         text = re.sub(rf"- {re.escape(label)}: \w+", f"- {label}: {gates}", text, count=1)
     text = re.sub(
         r"- Last release run: .*",
-        f"- Last release run: {now.astimezone(_dt.timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+        f"- Last release run: {now.astimezone(_dt.UTC).strftime('%Y-%m-%d %H:%M UTC')}",
         text,
         count=1,
     )
@@ -368,9 +379,7 @@ def sync_doc09_status(
         path.write_text(text, encoding="utf-8")
 
 
-def write_status(
-    old: str, target: str, bump: str, passed: int, total: int, gates: str
-) -> None:
+def write_status(old: str, target: str, bump: str, passed: int, total: int, gates: str) -> None:
     STATUS_JSON.parent.mkdir(parents=True, exist_ok=True)
     status = {
         "version": target,
@@ -379,7 +388,7 @@ def write_status(
         "validation_passed": passed,
         "validation_total": total,
         "gates": gates,
-        "written_utc": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+        "written_utc": _dt.datetime.now(_dt.UTC).isoformat(),
     }
     STATUS_JSON.write_text(json.dumps(status, indent=2) + "\n", encoding="utf-8")
 
@@ -405,7 +414,7 @@ def cmd_fallback_audit() -> int:
 def cmd_status(dry: bool) -> int:
     ensure_versions_consistent()
     passed, total = validation_counts()
-    now = _dt.datetime.now(_dt.timezone.utc)
+    now = _dt.datetime.now(_dt.UTC)
     print(f"[status] validation: {passed}/{total} passed")
     for line in sync_validation_counts(passed, total, dry):
         print(f"[status] count sync:   {line}")
@@ -425,7 +434,7 @@ def cmd_release(args: argparse.Namespace) -> int:
         raise SystemExit(f"bad target version: {target!r}")
 
     print(f"[release] version  {old} -> {target}")
-    now = _dt.datetime.now(_dt.timezone.utc)
+    now = _dt.datetime.now(_dt.UTC)
 
     if args.dry_run:
         print("[release] dry-run; no files written")
@@ -441,7 +450,7 @@ def cmd_release(args: argparse.Namespace) -> int:
         gates = "SKIPPED"
         print("[release] gates skipped (--no-gates)")
     else:
-        run_gates()
+        run_gates(use_xdist=not args.no_xdist)
         gates = "PASS"
 
     passed, total = validation_counts()
@@ -489,6 +498,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--new-version", default=None, help="explicit version YYYY.M.V")
     parser.add_argument("--no-gates", action="store_true", help="skip the quality gate")
+    parser.add_argument(
+        "--no-xdist",
+        action="store_true",
+        help="run G3 with base pytest only (no pytest-xdist); used by GitHub CI",
+    )
     parser.add_argument("--no-sync", action="store_true", help="skip status/doc sync")
     parser.add_argument("--dry-run", action="store_true", help="print the plan, do not write")
     return parser
@@ -503,7 +517,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "status":
         return cmd_status(args.dry_run)
     if args.cmd == "gates":
-        run_gates()
+        run_gates(use_xdist=not args.no_xdist)
         return 0
     if args.cmd == "release":
         return cmd_release(args)

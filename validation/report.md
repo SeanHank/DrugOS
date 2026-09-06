@@ -1,7 +1,7 @@
 # DrugOS Validation Report
 
 - Status: **PASS** (18/18 cases passed)
-- Generated: 2026-09-06 00:00 UTC
+- Generated: 2026-09-06 00:17 UTC
 - DrugOS version: 2026.9.0
 - Interpreter: /opt/anaconda3/envs/drug_os/bin/python
 - Fold-error allowance: within 2x of the published band centre (doc/08 Tier 2, GMFE <= 2); Fa bands additionally clamp to 1.

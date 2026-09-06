@@ -108,14 +108,16 @@ def test_gate_log_has_header_and_passed_marker(
     monkeypatch.setattr(release, "ensure_versions_consistent", lambda: None)
     monkeypatch.setattr(release, "verify_data_checksums", lambda: None)
     monkeypatch.setattr(release, "fallback_audit", lambda: [])
+    commands: list[list[str]] = []
 
     def fake_run_cmd(log_path: Path, label: str, cmd: Sequence[str], **_kwargs: object) -> int:
+        commands.append(list(cmd))
         with log_path.open("a", encoding="utf-8") as fh:
             fh.write(f"== {label} ==\n")
         return 0
 
     monkeypatch.setattr(release, "_run_cmd", fake_run_cmd)
-    release.run_gates()
+    release.run_gates(use_xdist=False)
     text = log.read_text(encoding="utf-8")
     assert text.startswith("DrugOS release quality gate")
     assert "started " in text
@@ -123,3 +125,22 @@ def test_gate_log_has_header_and_passed_marker(
     assert "G4 validation suite" in text
     assert "fallback audit: clean" in text
     assert text.endswith("ALL GATES PASSED\n")
+    g3 = next(c for c in commands if len(c) >= 3 and c[2] == "pytest")
+    assert g3 == [release.python(), "-m", "pytest"]
+
+
+def test_run_gates_uses_xdist_when_enabled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    log = tmp_path / "quality_gate.log"
+    monkeypatch.setattr(release, "GATE_LOG", log)
+    monkeypatch.setattr(release, "ensure_versions_consistent", lambda: None)
+    monkeypatch.setattr(release, "verify_data_checksums", lambda: None)
+    monkeypatch.setattr(release, "fallback_audit", lambda: [])
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        release,
+        "_run_cmd",
+        lambda log_path, label, cmd, **_kwargs: commands.append(list(cmd)) or 0,
+    )
+    release.run_gates(use_xdist=True)
+    g3 = next(c for c in commands if len(c) >= 3 and c[2] == "pytest")
+    assert g3 == [release.python(), "-m", "pytest", "-n", "auto"]
