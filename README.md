@@ -1,0 +1,246 @@
+<div align="center">
+
+# DrugOS
+
+**Multiscale, mechanism-based modeling of drug response in the human body.**
+
+From a SMILES string to a graded, evidence-attributed toxicity verdict — with
+the whole biology on the way rendered as equations you can read.
+
+</div>
+
+<p align="center">
+  <a href="https://www.python.org/downloads/"><img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-4b7bec?logo=python&logoColor=fff&labelColor=232946"></a>
+  <a href="#validation--quality-gates"><img alt="Validation 18/18" src="https://img.shields.io/badge/validation-18%2F18%20green-2acc74?style=flat"></a>
+  <a href="#validation--quality-gates"><img alt="Coverage 100%" src="https://img.shields.io/badge/coverage-100%25-2acc74?style=flat"></a>
+  <a href="https://github.com/"><img alt="AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-5865f2?style=flat"></a>
+  <a href="doc/09-quality-gate.md"><img alt="Lint" src="https://img.shields.io/badge/lint-ruff%20+%20mypy%20--strict-9855e2?style=flat"></a>
+</p>
+
+---
+
+## What is DrugOS?
+
+DrugOS is a **multiscale human drug-response simulator**. Give it a molecule, a
+dose, a route and a human profile and it simulates the compound end-to-end —
+whole-body exposure down to organ-level clinical biomarkers — returning a
+transparent, mechanism-attributed risk verdict.
+
+It is a **release-grade research platform**: every layer ships with documented
+equations (`doc/05`), a callable CLI and a web playground, and an enforceable
+validation suite whose **cases must all stay green before anything is released**
+(`doc/09`).
+
+```
+ SMILES + dose + route + human profile
+   │   RDKit descriptors + ADMET parameterization
+   ▼
+ Exposure   whole-body PBPK → tissue concentration (83 compartments, lumped circulation)
+   │
+   ▼
+ Target     receptor binding kinetics → occupancy & time-at-target
+   │
+   ▼
+ Pathway    signal transduction (QSP ODEs — MAPK cascade, baseline 2026.9.0)
+   │
+   ▼
+ Organ      liver (DILI) · cardiac (QTc/TdP) · kidney (AKI) · CNS brain exposure
+   │
+   ▼
+ Clinical   graded biomarkers + composite toxicity verdict (DILI / QT / AKI / CNS)
+   │
+   ▼
+ Decision   uncertainty bands · virtual cohort · sensitivity · prospective limits (D21–D24)
+```
+
+## Features
+
+| Layer | What it simulates | Mechanism |
+|---|---|---|
+| **Exposure** | C(t) in 83 tissue/plasma compartments | PBPK + ADMET + RDKit molecular descriptors |
+| **Target** | receptor binding & occupancy kinetics | affinity-driven occupancy model |
+| **Pathway** | signal transduction after exposure | QSP ODEs (MAPK cascade built in) |
+| **Organ — liver** | DILI trajectory, ALT/AST/bilirubin, Hy's Law | QST dose–response + mechanistic grade |
+| **Organ — cardiac** | QTc/TdP risk, ΔQTc, MAP | ion-channel QST + Fridericia correction |
+| **Organ — kidney** | AKI grade, serum creatinine, GFR | GFR/creatinine QST |
+| **Organ — CNS** | brain free exposure trajectory | passive blood–brain barrier model |
+| **Clinical** | graded biomarkers + composite verdict | three-line fusion (mechanistic / exposure / structural) |
+| **Decision** | 90 % uncertainty bands · cohort incidence · Sobol/OAT sensitivity · prospective anchoring | D21–D24 ensembles over the full pipeline |
+
+## Try it in under a minute
+
+```bash
+# development install (authoritative interpreter)
+/opt/anaconda3/envs/drug_os/bin/python -m pip install -r requirements.txt -r requirements-dev.txt
+/opt/anaconda3/envs/drug_os/bin/python -m pip install -e ".[dev]"
+
+# full quality gate: lint + types + 100 % branch coverage + validation suite
+python scripts/release.py gates
+
+# or just fire off a run right now
+python -m drugos run --benchmark dofetilide --dose 0.5 --route oral
+```
+
+Or install a published artifact (built automatically by CI — see
+[Release Engineering](#release-engineering)):
+
+```bash
+python -m pip install dist/drugos-2026.9.0-py3-none-any.whl
+```
+
+## CLI
+
+```bash
+drugos --version                    # drugos 2026.9.0
+drugos benchmarks                   # acetaminophen warfarin midazolam ciprofloxacin dofetilide
+
+# full pipeline report (markdown on stdout; json/html via --out DIR)
+drugos run --smiles "CC(=O)Nc1ccc(O)cc1" --dose 1000 --route oral
+drugos run --benchmark dofetilide --dose 0.5 --format json --out reports/
+
+# decision study: uncertainty ensemble + virtual cohort + global sensitivity
+drugos study --benchmark dofetilide --n-unc 17 --n-pop 16 --n-sobol 8 --out studies/
+
+# interactive web playground
+drugos serve --port 8080            # open http://127.0.0.1:8080
+```
+
+Example output (`drugos run --benchmark dofetilide --dose 0.5 --route oral`):
+
+```markdown
+# DrugOS pipeline report — dofetilide
+
+- Dose 0.5 mg (oral) · Cmax 0.002052 mg/L · AUC0-t 0.02953 mg·h/L · tmax 3.06 h
+
+## Target engagement
+| Target | Peak occupancy | Time-at-target (h) |
+|---|---|---|
+| hERG (Kv11.1) | 0.006375 | 0.06864 |
+| Estrogen receptor | 0.001381 | 0.007194 |
+| … 15 more off-target rows from the safety panel |
+
+## Pathway signaling
+- **erk_active** peak fold-change 37.29 vs drug-free baseline.
+
+## Organ trajectories
+- **Liver (DILI):** grade 0, ALT 1 xULN, bilirubin 1 xULN, Hy's Law not met
+- **Cardiac:** ΔQTc 20.86 ms, peak QTc 435.9 ms (none band), MAP 93 mmHg
+- **Kidney:** AKI grade 0, peak Scr ratio 1, min GFR 125 mL/min
+
+## Composite toxicity
+| Endpoint          | Risk   | Driver       | Reason                       |
+|-------------------|--------|--------------|------------------------------|
+| Drug-induced liver injury | 0.031 | mechanistic | organ QST grade 0 (normal) |
+| QT prolongation / TdP | 0.813 | mechanistic | organ QST grade 1 (mild) |
+| Acute kidney injury  | 0.220 | mechanistic | organ QST grade 0 (normal) |
+| CNS liability        | 0.200 | mechanistic | class prior only (unanchored) |
+
+**Verdict:** High composite risk (81%, driver qt)
+```
+
+## Web Playground
+
+`drugos serve` launches a Flask single-page app — deep-purple dark theme —
+that runs the live pipeline in your browser:
+
+- molecule input via SMILES **or** one of the five benchmarks, dose, route, profile;
+- **Target engagement** (occupancy table) and **Pathway signaling** panels;
+- **CNS · brain free exposure** trajectory in the organ views;
+- decision toggles on any run:
+  - **Uncertainty (D21)** — 90 % credible bands around every readout;
+  - **Population (D22)** — a virtual cohort with incidence of grade ≥ 1 outcomes;
+  - **Sensitivity (D23)** — local drivers + first/total Sobol indices;
+- everything backed by the same `POST /api/run` contract the CLI uses.
+
+## Validation & Quality Gates
+
+`validation/` holds the tier ladder; `python validation/run_validation.py`
+regenerates `validation/report.md` (currently **18/18 cases green**):
+
+| Tier | Case | Checks |
+|---|---|---|
+| L1 analytic | robustness sanity (D21–D23 behavior) | 90 %-band sanity, non-negativity, Sobol bounds, OAT sign |
+| L1 analytic | prospective fidelity (D24) | deterministic re-runs, held-out high-risk profile retention |
+| L2 limit | clinical grading | exposure line vs prior-only fusion, mechanistic grade ladder |
+| L2 limit | risk ordering | dofetilide QT ≫ warfarin QT, dose–DILI separability |
+| L3 empirical | benchmark suite | mass balance, dose proportionality, occupancy, pathway, organ PK |
+
+**Quality gate** — `python scripts/release.py gates` is the single release gate:
+`scripts/release.py` (the merged successor of the former `quality_gate.sh`)
+runs G1–G4 and a **no-silent-fallback audit**:
+
+- **G1** ruff (E/F/W/I/UP/B, line length 100) — clean
+- **G2** mypy `--strict` across `src/drugos` — no errors
+- **G3** pytest **in parallel (`-n auto`)** with **100 % branch coverage** of
+  `src/drugos`, no exclusions
+- **G4** validation suite — 18/18 green, report regenerated
+- **G5** fallback audit — every `except` handler in the package must surface an
+  explicit error; silent swallowing is a hard failure (inventory pinned in
+  `scripts/fallback_allowlist.json`)
+
+See [`doc/09-quality-gate.md`](doc/09-quality-gate.md) for the full contract.
+
+## Release Engineering
+
+CI (`.github/workflows/ci.yml`) automates releases on top of the quality gate:
+
+1. **quality** — runs G1–G5 (via `python scripts/release.py gates`) on every
+   push, PR and tag; uploads the gate log and `validation/report.md` as
+   artifacts;
+2. **build** (needs `quality`) — reads the release version from
+   `pyproject.toml`, `python -m build` produces the **wheel (`dist/*.whl`)**
+   and **sdist (`dist/*.tar.gz`)**, validates them with `twine check`,
+   smoke-tests the wheel in a clean virtualenv (imports, packaged templates +
+   `py.typed`, installed CLI), and on a **tagged push** — where the tag must
+   equal the `pyproject.toml` version — opens a **GitHub Release** with the
+   artifacts attached.
+
+Locally, `scripts/release.py` does the same bookkeeping in one shot: runs the
+four gates + fallback audit, bumps the project-wide version (`YYYY.M.V`),
+rewrites the version / status numbers across `README.md` and `doc/*.md`, and
+writes `build/release_status.json`.
+
+Release → `git tag 2026.9.0 && git push --tags`. Version scheme `YYYY.M.V`.
+
+## Package layout
+
+```
+src/drugos/
+  inputs/       # structure / route / dose / human-profile parsing
+  pk/           # ADMET parameterization + whole-body PBPK
+  target/       # target identification + binding occupancy
+  pathway/      # signal-transduction QSP (MAPK cascade)
+  organ/        # liver · cardiac (QTc) · kidney · CNS QST
+  clinical/     # biomarkers + composite toxicity fusion
+  robustness/   # D21 uncertainty · D22 population · D23 sensitivity
+  pipeline.py   # RunSpec → RunResult orchestration contract
+  report/       # JSON / markdown / HTML report rendering
+  web/          # Flask playground + /api/run (shipped in the wheel)
+  cli.py        # run · benchmarks · study · serve · version subcommands
+  version.py    # YYYY.M.V
+```
+
+## Design documents
+
+Start with `doc/01-project-overview.md`, then `doc/05-methodology-pipeline.md`:
+
+`doc/01` overview · `doc/02` data & datasets · `doc/03` system architecture ·
+`doc/04` module design · `doc/05` methodology & pipeline · `doc/06` tech stack ·
+`doc/07` roadmap · `doc/08` scope & limits · `doc/09` quality gate
+
+## Community
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) — how to add a validation case, open an
+  issue, or propose a gate change.
+- [CREDITS.md](CREDITS.md) — tooling, datasets and prior art the platform builds on.
+- [DISCLAIMER.md](DISCLAIMER.md) — legal notices and usage limitations.
+- [doc/08-scope-and-limitations.md](doc/08-scope-and-limitations.md) — what the
+  baseline does **not** claim.
+
+## License
+
+This project is licensed under the **GNU Affero General Public License v3.0** (AGPLv3).
+
+See [DISCLAIMER.md](DISCLAIMER.md) for important legal notices and limitations.
+
+Copyright © 2026 Sean Hank.

@@ -1,0 +1,14 @@
+{
+  "version": "2026.9.0",
+  "about": "Data manifest for the DrugOS repository. Every vendored file under data/ is pinned by sha256; scripts/release.py gates verifies each checksum and fails the release on any mismatch (tampering, silent edits, or accidental drift). Sources that are distributed as packages (ADMET-AI, RDKit, terbapy-style model weights) or are license-restricted bulk downloads are documented in data/README.md and fetched via package managers; they are never vendored here.",
+  "files": [
+    {
+      "path": "benchmarks/published_pk.json",
+      "sha256": "11855a6662f37e832b30a7df1fdcc295ef92d50b0bb26b2382a1766cf0272115",
+      "source": "Original experimental/pharmacokinetic reference bands (CL, t1/2, Fa, fe, Vss) for the five benchmark compounds: Goodman & Gilman 13th ed.; host USPIs (Tylenol, Coumadin, Cipro, Versed, Tikosyn); Bergan 1986; Greenblatt 1984; Smith 1992; partition model Rodgers & Rowland 2006 / Ye et al. 2016. Full strings in validation/benchmarks/citations.py.",
+      "license": "Published numeric ranges; cited academic use. No bulk redistribution of third-party text.",
+      "status": "vendored",
+      "retrieved_utc": "2026-09-05T23:27:39Z"
+    }
+  ]
+}

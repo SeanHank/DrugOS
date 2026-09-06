@@ -1,0 +1,16 @@
+{
+  "handlers": {
+    "src/drugos/web/app.py": [
+      63
+    ],
+    "src/drugos/cli.py": [
+      220,
+      352
+    ]
+  },
+  "notes": {
+    "src/drugos/web/app.py:63": "converts retrieval/spec errors into an explicit HTTP 400 JSON error body (return jsonify({'error': ...}), 400).",
+    "src/drugos/cli.py:220": "prints the error to stderr and returns a nonzero exit code (message surfaced to the user).",
+    "src/drugos/cli.py:352": "same pattern for the study command: stderr message + nonzero exit code."
+  }
+}

@@ -1,0 +1,256 @@
+"""PBPK simulation: ODE solve, PK metrics and result container."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Literal
+
+import numpy as np
+from scipy.integrate import solve_ivp
+
+from drugos.inputs.models import Route
+from drugos.pk.pbpk_build import PBPKModel
+
+NDArray = np.ndarray[tuple[int], np.dtype[np.float64]]
+_METHOD = Literal["RK23", "RK45", "DOP853", "Radau", "BDF", "LSODA"]
+_DEFAULT_N_EVAL = 601
+
+
+@dataclass(slots=True)
+class PkMetrics:
+    """Non-compartmental PK metrics computed from the plasma profile."""
+
+    cmax_mg_l: float
+    tmax_h: float
+    auc_last_mgh_l: float
+    auc_inf_mgh_l: float
+    term_half_life_h: float
+    lambda_z_1h: float
+    cl_l_h: float
+    mrt_h: float
+    vss_l: float
+    c_last_mg_l: float
+    dose_mg: float
+    route: Route
+    f_abs: float = 1.0
+
+    def as_dict(self) -> dict[str, float | bool | int | None]:
+        return {
+            "cmax_mg_l": self.cmax_mg_l,
+            "tmax_h": self.tmax_h,
+            "auc_last_mg_h_l": self.auc_last_mgh_l,
+            "auc_inf_mg_h_l": self.auc_inf_mgh_l,
+            "t_half_h": self.term_half_life_h,
+            "lambda_z_1_h": self.lambda_z_1h,
+            "cl_l_h": self.cl_l_h,
+            "mrt_h": self.mrt_h,
+            "vss_l": self.vss_l,
+            "c_last_mg_l": self.c_last_mg_l,
+            "bioavailability_f": self.f_abs,
+        }
+
+
+@dataclass(slots=True)
+class PBPKResult:
+    """Concentration-time output of a PBPK simulation.
+
+    Concentrations are in mg/L, times in hours. Tissue entries are total
+    (free + bound) tissue concentrations; ``unbound_tissues`` are the free
+    concentrations that drive pharmacological and toxicological responses.
+    """
+
+    t: NDArray
+    plasma_total: NDArray
+    plasma_free: NDArray
+    venous_plasma: NDArray
+    tissues: dict[str, NDArray] = field(default_factory=dict)
+    unbound_tissues: dict[str, NDArray] = field(default_factory=dict)
+    urine_cum_mg: NDArray | None = None
+    feces_cum_mg: NDArray | None = None
+    dose_mg: float = 0.0
+    route: Route = Route.ORAL
+    n_eval: int = _DEFAULT_N_EVAL
+    solver: str = "LSODA"
+    final_state: NDArray | None = None
+
+    def pk_metrics(self) -> PkMetrics:
+        return compute_pk_metrics(self.t, self.plasma_total, self.dose_mg, self.route)
+
+    def to_data_contract(self) -> dict[str, object]:
+        """Stage-1 slice of the pipeline data contract (doc/03, section 3)."""
+        return {
+            "time": self.t.tolist(),
+            "plasma_total": self.plasma_total.tolist(),
+            "plasma_free": self.plasma_free.tolist(),
+            "venous_plasma": self.venous_plasma.tolist(),
+            "tissues": {k: v.tolist() for k, v in self.tissues.items()},
+            "unbound_tissues": {k: v.tolist() for k, v in self.unbound_tissues.items()},
+            "urine_cum_mg": None if self.urine_cum_mg is None else self.urine_cum_mg.tolist(),
+            "feces_cum_mg": None if self.feces_cum_mg is None else self.feces_cum_mg.tolist(),
+            "pk_metrics": self.pk_metrics().as_dict(),
+        }
+
+
+def simulate_pbpk(
+    model: PBPKModel,
+    tmax_h: float = 48.0,
+    n_eval: int = _DEFAULT_N_EVAL,
+    rtol: float = 1e-8,
+    atol: float = 1e-9,
+    method: _METHOD = "LSODA",
+) -> PBPKResult:
+    """Integrate the PBPK system over ``tmax_h`` hours.
+
+    Events (bolus/oral doses, infusion starts/ends) are handled piecewise:
+    the state is integrated segment by segment and bolus/oral doses are applied
+    instantaneously at event boundaries.
+    """
+    if tmax_h <= 0:
+        raise ValueError("tmax_h must be positive")
+
+    events = sorted(model.dose_plan.events, key=lambda e: e.time_h)
+    event_times = [e.time_h for e in events if e.time_h <= tmax_h]
+    # 0.0 is always present below, so ``boundaries`` is non-empty and starts
+    # at 0 by construction; no extra guard is needed.
+    boundaries = sorted(set([0.0, tmax_h, *event_times]))
+
+    y = model.initial_state()
+    t_parts: list[NDArray] = []
+    y_tissues: dict[str, list[NDArray]] = {name: [] for name in model.order}
+    y_plasma: list[NDArray] = []
+    y_plasma_free: list[NDArray] = []
+    y_venous: list[NDArray] = []
+    y_urine: list[NDArray] = []
+    y_feces: list[NDArray] = []
+
+    def record(t: NDArray, y: np.ndarray[tuple[int, int], np.dtype[np.float64]]) -> None:
+        c_ab = y[model.state_index("arterial")] / model.physiology.arterial_blood_l
+        c_vb = y[model.state_index("venous")] / model.physiology.venous_blood_l
+        y_plasma.append(c_ab / model.bp)
+        y_plasma_free.append(model.fup * c_ab / model.bp)
+        y_venous.append(c_vb / model.bp)
+        y_urine.append(y[model.state_index("urine")])
+        y_feces.append(y[model.state_index("feces")])
+        for name in model.order:
+            conc = y[model.state_index(name)] / model.physiology.organ_volume[name]
+            y_tissues[name].append(conc)
+
+    for i in range(len(boundaries) - 1):
+        a, b = boundaries[i], boundaries[i + 1]
+        model.apply_event(y, a)
+        sub = np.linspace(a, b, max(2, int(n_eval * (b - a) / tmax_h) + 1))
+        sol = solve_ivp(
+            model.rhs,
+            (a, b),
+            y,
+            method=method,
+            t_eval=sub,
+            rtol=rtol,
+            atol=atol,
+        )
+        if not sol.success:
+            raise RuntimeError(f"solver failed on segment [{a}, {b}]: {sol.message}")
+        y = sol.y[:, -1]
+        t_parts.append(sol.t)
+        record(sol.t, sol.y)
+
+    # ``boundaries`` always contains at least [0, tmax_h] (tmax_h > 0 is
+    # enforced above), so at least one segment is integrated and ``t_parts``
+    # is never empty here.
+    t_all = np.concatenate(t_parts)
+    plasma = np.concatenate(y_plasma)
+    plasma_free = np.concatenate(y_plasma_free)
+    venous = np.concatenate(y_venous)
+    urine = np.concatenate(y_urine)
+    feces = np.concatenate(y_feces)
+    tissues = {name: np.concatenate(ys) for name, ys in y_tissues.items()}
+    unbound_tissues = {name: tissues[name] / model.partition.kpu[name] for name in tissues}
+
+    return PBPKResult(
+        t=t_all,
+        plasma_total=plasma,
+        plasma_free=plasma_free,
+        venous_plasma=venous,
+        tissues=tissues,
+        unbound_tissues=unbound_tissues,
+        urine_cum_mg=urine,
+        feces_cum_mg=feces,
+        dose_mg=model.dose_plan.total_dose_mg,
+        route=_route_of(model),
+        n_eval=n_eval,
+        solver=method,
+        final_state=y,
+    )
+
+
+def _route_of(model: PBPKModel) -> Route:
+    routes = model.dose_plan.routes
+    return routes[0] if routes else Route.ORAL
+
+
+def compute_pk_metrics(
+    t: NDArray,
+    concentration: NDArray,
+    dose_mg: float,
+    route: Route,
+) -> PkMetrics:
+    """Non-compartmental PK metrics (linear trapezoid + log-linear terminal)."""
+    if t.size < 3:
+        raise ValueError("at least 3 time points are required for PK metrics")
+    conc = np.asarray(concentration, dtype=float)
+    t = np.asarray(t, dtype=float)
+
+    i_max = int(np.argmax(conc))
+    cmax = float(conc[i_max])
+    tmax = float(t[i_max])
+
+    auc_last = float(np.trapezoid(conc, t))
+
+    # Terminal half-life: log-linear fit on the tail after Cmax.
+    tail = conc[i_max + 1 :]
+    t_tail = t[i_max + 1 :]
+    if tail.size >= 3 and tail[-1] > 0 and np.all(tail > 0):
+        floor = cmax * 0.05
+        keep = tail > floor
+        if keep.sum() >= 3:
+            t_sel, c_sel = t_tail[keep], tail[keep]
+        else:
+            t_sel, c_sel = t_tail[-3:], tail[-3:]
+        (slope, _) = np.polyfit(t_sel, np.log(c_sel), 1)
+        lambda_z = -float(slope)
+    else:
+        lambda_z = 0.0
+
+    if lambda_z > 0:
+        c_last = float(conc[-1])
+        auc_inf = auc_last + c_last / lambda_z
+        term_half_life = np.log(2.0) / lambda_z
+    else:
+        auc_inf = auc_last
+        c_last = float(conc[-1])
+        term_half_life = np.inf
+
+    if auc_inf > 0 and dose_mg > 0:
+        cl = dose_mg / auc_inf
+        aumc = float(np.trapezoid(conc * t, t))
+        mrt = aumc / auc_last if auc_last > 0 else 0.0
+        vss = cl * mrt
+    else:
+        cl = 0.0
+        mrt = 0.0
+        vss = 0.0
+
+    return PkMetrics(
+        cmax_mg_l=cmax,
+        tmax_h=tmax,
+        auc_last_mgh_l=auc_last,
+        auc_inf_mgh_l=auc_inf,
+        term_half_life_h=term_half_life,
+        lambda_z_1h=lambda_z,
+        cl_l_h=cl,
+        mrt_h=mrt,
+        vss_l=vss,
+        c_last_mg_l=float(conc[-1]),
+        dose_mg=dose_mg,
+        route=route,
+    )

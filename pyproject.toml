@@ -1,0 +1,94 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "drugos"
+version = "2026.9.0"
+description = "Multiscale mechanism-based model of drug response in the human body: drug -> concentration -> target -> pathway -> organ -> phenotype"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "AGPL-3.0-only" }
+authors = [{ name = "Sean Hank" }]
+keywords = ["pharmacokinetics", "ppbk", "qsp", "qst", "systems-pharmacology", "drug-discovery"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
+
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "pandas>=2.0",
+    "pydantic>=2.0",
+    "rdkit>=2023.9",
+    "matplotlib>=3.8",
+    "plotly>=5.18",
+    "jinja2>=3.1",
+    "admet-ai>=2.0",
+    "torch>=2.8",
+    "flask>=3.0",
+]
+
+[project.scripts]
+drugos = "drugos.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.1",
+    "pytest-xdist>=3.5",
+    "ruff>=0.4",
+    "mypy>=1.9",
+    "jupyterlab>=4.0",
+    "build>=1.0",
+    "twine>=5.0",
+]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+drugos = ["py.typed", "web/templates/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --cov=drugos --cov-report=term-missing"
+
+[tool.coverage.run]
+source = ["src/drugos"]
+branch = true
+# NO omit / exclude_lines entries are permitted: 100 % coverage of src/drugos
+# with no exclusions of any form is a release gate (see doc/09-quality-gate.md).
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+skip_empty = false
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["B008"]
+
+[tool.mypy]
+python_version = "3.12"
+packages = ["drugos"]
+strict = true
+mypy_path = ["stubs", "src"]
+explicit_package_bases = true
+# Local stubs under stubs/ cover third-party API subsets (RDKit) that ship
+# without full type annotations; listed in doc/06-technology-stack.md.
+# No per-file ignores, no blanket suppressions (doc/09-quality-gate.md, G2).

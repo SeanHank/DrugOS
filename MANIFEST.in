@@ -1,0 +1,7 @@
+include README.md
+include pyproject.toml
+include src/drugos/py.typed
+recursive-include src/drugos/web/templates *.html *.css *.js
+recursive-include tests *.py
+recursive-include validation *.py *.md
+recursive-include doc *.md
