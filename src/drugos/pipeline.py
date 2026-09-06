@@ -217,9 +217,9 @@ class RunResult:
                     "liver_bilirubin_mg_dL": liver.bilirubin_mg_dl.tolist(),
                     "qtc_ms": cardiac.qtc_ms.tolist(),
                     "delta_qtc_ms": cardiac.delta_qtc_ms.tolist(),
-                    "gfr_ml_min": kidney.gfr_ml_min.tolist(),
-                    "scr_ratio": kidney.scr_ratio.tolist(),
-                    "brain_free_nm": cns.brain_free_nm.tolist(),
+                    "gfr_ml_min": _on_x(liver.t_h, kidney.t_h, kidney.gfr_ml_min).tolist(),
+                    "scr_ratio": _on_x(liver.t_h, kidney.t_h, kidney.scr_ratio).tolist(),
+                    "brain_free_nm": _on_x(liver.t_h, cns.t_h, cns.brain_free_nm).tolist(),
                 },
             },
             "clinical": {
@@ -240,6 +240,14 @@ class RunResult:
 
 def _mg_l_to_nm(c_mg_l: float, mw: float) -> float:
     return c_mg_l * _NM_PER_MG / mw
+
+
+def _on_x(x_ref: NDArray, x_src: NDArray, y_src: NDArray) -> NDArray:
+    """Resample ``y_src`` (on grid ``x_src``) onto the reference grid ``x_ref``."""
+    xi = np.asarray(x_ref, dtype=float)
+    xs = np.asarray(x_src, dtype=float)
+    out: NDArray = np.interp(xi, xs, np.asarray(y_src, dtype=float))
+    return out
 
 
 def _herg_occupancy(

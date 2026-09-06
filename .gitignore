@@ -26,8 +26,3 @@ data/*/
 .DS_Store
 .idea/
 .vscode/
-
-# Reports
-reports/
-*.html
-coverage.xml

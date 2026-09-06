@@ -99,6 +99,8 @@ def test_run_pipeline_warfarin(fast_warfarin: RunSpec) -> None:
     assert contract["clinical"]["toxicity"]["endpoints"][0]["risk"] < 0.3
     assert "cns" in contract["organ"]
     assert "brain_free_nm" in contract["organ"]["trajectories"]
+    traj = contract["organ"]["trajectories"]
+    assert len({len(v) for v in traj.values()}) == 1, "trajectories must share one time grid"
     assert contract["clinical"]["exposure"]["cns_ic50_nm"] == 1.0e5
     assert result.exposure.cns_anchored is False
 

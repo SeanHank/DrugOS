@@ -12,8 +12,7 @@ cases, not from authority.
 
 ## Ground rules
 
-- **A change is not merged until all four gates are green** locally on the
-  pinned interpreter (`/opt/anaconda3/envs/drug_os/bin/python`):
+- **A change is not merged until all four gates are green**:
   G1 ruff, G2 `mypy --strict`, G3 100 % branch coverage of `src/drugos`,
   G4 the full validation suite. `python scripts/release.py gates` runs them all
   (plus the no-silent-fallback audit, G5).
@@ -42,12 +41,12 @@ cases, not from authority.
 ## Running the gates
 
 ```bash
-/opt/anaconda3/envs/drug_os/bin/python -m ruff check src tests validation
-/opt/anaconda3/envs/drug_os/bin/python -m ruff format --check src tests validation
-/opt/anaconda3/envs/drug_os/bin/python -m mypy --strict src/drugos
-/opt/anaconda3/envs/drug_os/bin/python -m pytest -n auto          # full suite, parallel
-/opt/anaconda3/envs/drug_os/bin/python validation/run_validation.py # regenerates validation/report.md
-/opt/anaconda3/envs/drug_os/bin/python scripts/release.py gates    # one-shot: all of the above
+python -m ruff check src tests validation
+python -m ruff format --check src tests validation
+python -m mypy --strict src/drugos
+python -m pytest -n auto          # full suite, parallel
+python validation/run_validation.py # regenerates validation/report.md
+python scripts/release.py gates    # one-shot: all of the above
 python scripts/release.py fallback-audit                            # every except handler must surface an error
 ```
 
@@ -68,7 +67,7 @@ gates + fallback audit, bumps the version project-wide, syncs the status
 numbers in `README.md` and `doc/*.md`, and writes `build/release_status.json`:
 
 ```bash
-/opt/anaconda3/envs/drug_os/bin/python scripts/release.py --bump auto
+python scripts/release.py --bump auto
 ```
 
 See `doc/09-quality-gate.md` for the full release contract.

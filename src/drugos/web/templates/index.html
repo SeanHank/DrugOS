@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DrugOS · human drug response playground</title>
+<style>
+  :root{
+    --bg:#171022; --bg2:#0f0918; --panel:#241a36; --panel2:#2e2145; --border:#3a2c55;
+    --acc:#a78bfa; --acc2:#7c3aed; --text:#ece6f6; --mut:#a398c4;
+    --green:#86e087; --amber:#f5c268; --red:#f87171;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;color:var(--text);
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    background:
+      radial-gradient(1000px 500px at 85% -10%, rgba(124,58,237,.22), transparent 60%),
+      radial-gradient(800px 400px at -10% 30%, rgba(167,139,250,.12), transparent 60%),
+      linear-gradient(160deg,var(--bg),var(--bg2) 80%);
+    min-height:100vh}
+  header{padding:26px 28px 10px}
+  .brand{font-size:24px;font-weight:800;letter-spacing:.04em}
+  .brand b{color:var(--acc)}
+  .tag{color:var(--mut);font-size:12px;letter-spacing:.12em;margin-top:4px}
+  .wrap{max-width:none;margin:0 auto;padding:0 22px 60px}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;
+    padding:20px;margin:16px 0}
+  .h2{color:var(--acc);font-size:13px;text-transform:uppercase;letter-spacing:.1em;
+    margin:0 0 12px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+  label{display:block;color:var(--mut);font-size:11px;margin:0 0 4px}
+  input,select{width:100%;height:40px;background:#1b1229;color:var(--text);
+    border:1px solid var(--border);border-radius:8px;padding:0 10px;font:inherit;font-size:13px;
+    appearance:none;-webkit-appearance:none;-webkit-border-radius:8px}
+  select{padding-right:30px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23a398c4' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 12px center}
+  input:focus,select:focus{outline:none;border-color:var(--acc2)}
+  input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{appearance:none;-webkit-appearance:none;margin:0}
+  .btn{background:linear-gradient(135deg,var(--acc2),#9d5cff);color:#fff;border:none;
+    border-radius:10px;padding:11px 22px;font:inherit;font-weight:700;cursor:pointer;
+    letter-spacing:.04em}
+  .btn:hover{filter:brightness(1.12)}
+  .btn:disabled{opacity:.5;cursor:wait}
+  table{border-collapse:collapse;width:100%}
+  th,td{padding:7px 10px;text-align:left;border-bottom:1px solid var(--border);font-size:13px}
+  th{color:var(--mut);font-weight:600}
+  .grade{display:inline-block;color:#171022;font-weight:800;border-radius:10px;
+    min-width:22px;text-align:center;padding:2px 6px}
+  .verdict{font-size:17px;font-weight:800;padding:14px 18px;border-radius:12px;
+    background:#1b1229;border:1px solid var(--border)}
+  .simbox{font-size:17px;font-weight:800;padding:14px 18px;border-radius:12px;
+    background:#1b1229;border:1px solid var(--acc2);color:var(--acc);
+    margin-top:16px;letter-spacing:.06em;animation:simpulse 1.2s ease-in-out infinite}
+  @keyframes simpulse{0%,100%{opacity:1}50%{opacity:.4}}
+  .mut{color:var(--mut);font-size:12px}
+  .row{display:flex;gap:26px;flex-wrap:wrap}
+  .charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+  canvas{width:100%;height:170px;display:block}
+  .chartbox{background:#1b1229;border:1px solid var(--border);border-radius:10px;padding:10px}
+  .chartbox .t{color:var(--mut);font-size:11px;margin-bottom:6px}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+  .kpi{background:#1b1229;border:1px solid var(--border);border-radius:10px;padding:10px}
+  .kpi .v{font-size:19px;font-weight:700;margin-top:2px}
+  .kpi .l{color:var(--mut);font-size:11px}
+  .bar{height:8px;border-radius:5px;background:#3a2c55;position:relative;margin:6px 0 2px}
+  .bar i{position:absolute;top:-2px;height:12px;width:12px;border-radius:50%;
+    transform:translateX(-50%)}
+  .risklabel{display:flex;justify-content:space-between;font-size:12px;color:var(--mut)}
+  .ci{color:var(--mut);font-size:11px}
+  .switch{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--mut)}
+  .switch input[type=checkbox]{width:16px;height:16px;min-height:16px;margin:0;padding:0;flex:none;
+    appearance:auto;-webkit-appearance:auto;accent-color:var(--acc2);cursor:pointer}
+  #err{display:none;background:#3a1020;border:1px solid #7a1f38;color:#ffc9cf;
+    border-radius:10px;padding:12px;margin:12px 0}
+  .hidden{display:none}
+  .spark{font-size:11px}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">Drug<b>OS</b> <span style="color:var(--mut);font-size:13px">· 2026.9.0</span></div>
+  <div class="tag">MULTISCALE DRUG RESPONSE</div>
+</header>
+<div class="wrap">
+
+  <section class="panel">
+    <div class="h2">Scenario</div>
+    <div class="grid">
+      <div>
+        <label>Benchmark compound</label>
+        <select id="benchmark"></select>
+      </div>
+      <div>
+        <label>Dose (mg)</label>
+        <input id="dose" type="number" value="1000" step="1">
+      </div>
+      <div>
+        <label>Route</label>
+        <select id="route">
+          <option value="oral">oral</option>
+          <option value="iv_bolus">iv_bolus</option>
+          <option value="iv_infusion">iv_infusion</option>
+        </select>
+      </div>
+      <div>
+        <label>Sex</label>
+        <select id="sex"><option>male</option><option>female</option></select>
+      </div>
+      <div>
+        <label>Age (y)</label>
+        <input id="age" type="number" value="40">
+      </div>
+      <div>
+        <label>Height (cm)</label>
+        <input id="height" type="number" value="170">
+      </div>
+      <div>
+        <label>Weight (kg)</label>
+        <input id="weight" type="number" value="70">
+      </div>
+    </div>
+    <div style="margin-top:12px">
+      <label>Custom SMILES <span class="mut"></span></label>
+      <input id="smiles" placeholder="e.g. CN1C=NC2=C1C(=O)N(C(=O)N2C)C">
+    </div>
+    <div style="display:flex;align-items:center;gap:18px;margin-top:16px">
+      <button id="run" class="btn">Run pipeline</button>
+      <label class="switch"><input id="nopath" type="checkbox"> skip pathway simulation</label>
+      <label class="switch"><input id="with_unc" type="checkbox"> uncertainty (D21)</label>
+      <label class="switch"><input id="with_pop" type="checkbox"> population (D22)</label>
+      <label class="switch"><input id="with_sens" type="checkbox"> sensitivity (D23)</label>
+    </div>
+    <div id="spin" class="simbox hidden">simulating…</div>
+    <div id="err"></div>
+  </section>
+
+  <section id="results" class="hidden">
+    <div id="verdict" class="verdict"></div>
+
+    <div class="panel">
+      <div class="h2">Pharmacokinetics</div>
+      <div class="kpis" id="pk_kpis"></div>
+      <div style="margin-top:14px">
+        <div class="chartbox"><div class="t">plasma concentration (mg/L)</div>
+          <canvas id="c_pk"></canvas></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="h2">Target engagement</div>
+      <table>
+        <tr><th>Target</th><th>Peak occupancy</th><th>Time-at-target (h)</th></tr>
+        <tbody id="occ_rows"></tbody>
+      </table>
+      <div class="mut" id="occ_primary" style="margin-top:8px"></div>
+    </div>
+
+    <div class="panel">
+      <div class="h2">Pathway signaling</div>
+      <div id="pathway_html" class="mut"></div>
+    </div>
+
+    <div class="panel">
+      <div class="h2">Organ trajectories</div>
+      <div class="charts">
+        <div class="chartbox"><div class="t">liver · ALT (U/L) & bilirubin (mg/dL)</div>
+          <canvas id="c_liver"></canvas></div>
+        <div class="chartbox"><div class="t">cardiac · QTc (ms)</div>
+          <canvas id="c_qtc"></canvas></div>
+        <div class="chartbox"><div class="t">kidney · GFR (mL/min)</div>
+          <canvas id="c_gfr"></canvas></div>
+        <div class="chartbox"><div class="t">kidney · creatinine ratio</div>
+          <canvas id="c_scr"></canvas></div>
+        <div class="chartbox"><div class="t">CNS · brain free exposure (nM)</div>
+          <canvas id="c_brain"></canvas></div>
+      </div>
+    </div>
+
+    <div class="panel hidden" id="unc_panel">
+      <div class="h2">Uncertainty ensemble (D21)</div>
+      <div id="unc_meta" class="mut"></div>
+      <div id="unc_verdicts" class="kpis" style="margin-top:10px"></div>
+      <div class="charts" style="margin-top:12px">
+        <div class="chartbox"><div class="t">plasma total (mg/L) · 90% band</div>
+          <canvas id="c_unc_pk"></canvas></div>
+        <div class="chartbox"><div class="t">QTc (ms) · 90% band</div>
+          <canvas id="c_unc_qtc"></canvas></div>
+        <div class="chartbox"><div class="t">ALT (U/L) · 90% band</div>
+          <canvas id="c_unc_alt"></canvas></div>
+      </div>
+    </div>
+
+    <div class="panel hidden" id="pop_panel">
+      <div class="h2">Virtual population (D22)</div>
+      <div id="pop_meta" class="mut"></div>
+      <div style="margin-top:10px">
+        <table>
+          <tr><th>Endpoint</th><th>q5 risk</th><th>median</th><th>q95</th>
+            <th>incidence ≥1</th><th>incidence ≥2</th></tr>
+          <tbody id="pop_rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel hidden" id="sens_panel">
+      <div class="h2">Sensitivity (D23)</div>
+      <div class="mut">top local drivers of overall risk</div>
+      <table style="margin-top:6px">
+        <tr><th>Parameter</th><th>Local index</th><th>Sobol S1</th><th>Sobol ST</th></tr>
+        <tbody id="sens_rows"></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <div class="h2">Clinical biomarkers (CTCAE-style)</div>
+      <div id="biomarkers"></div>
+    </div>
+
+    <div class="panel">
+      <div class="h2">Composite toxicity (3-line fusion)</div>
+      <table>
+        <tr><th>Endpoint</th><th>Risk</th><th>Grade</th><th>Driver</th><th>Reason</th></tr>
+        <tbody id="tox"></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <div class="h2">Exposure anchors</div>
+      <table>
+        <tr><th>Unbound Cmax (nM)</th><th>Liver free Cmax (nM)</th>
+          <th>Kidney free Cmax (nM)</th><th>hERG IC50 (nM)</th><th>BSEP/mito IC50 (nM)</th>
+          <th>CNS IC50 (nM)</th></tr>
+        <tr id="exprow"></tr>
+      </table>
+    </div>
+
+    <div class="mut">Research-grade model output for engineering validation; not for clinical
+      decision-making. Runs are simulations of model assumptions, not reproduced trials.</div>
+  </section>
+</div>
+
+<script>
+"use strict";
+const API = { green:"#86e087", amber:"#f5c268", red:"#f87171", acc:"#a78bfa", mut:"#a398c4" };
+const $ = id => document.getElementById(id);
+
+async function init(){
+  const r = await fetch("/api/benchmarks");
+  const data = await r.json();
+  const sel = $("benchmark");
+  data.benchmarks.forEach(b => {
+    const o = document.createElement("option");
+    o.value = b; o.textContent = b;
+    if(b === "acetaminophen") o.selected = true;
+    sel.appendChild(o);
+  });
+  $("run").addEventListener("click", doRun);
+}
+
+function sevColor(g){ return g>=3?API.red : g===2?API.amber : g===1?API.acc : API.green; }
+
+function lineChart(id, series){
+  const cv = $(id); if(!cv) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w*dpr; cv.height = h*dpr;
+  const ctx = cv.getContext("2d"); ctx.scale(dpr, dpr);
+  ctx.clearRect(0,0,w,h);
+  const pad = {l:44, r:14, t:10, b:18};
+  let lo = Infinity, hi = -Infinity;
+  series.forEach(s => s.y.forEach(v => { if(v < lo) lo = v; if(v > hi) hi = v; }));
+  if(hi - lo < 1e-9){ hi = lo + 1; lo -= 1; }
+  const span = hi - lo;
+  lo -= 0.08*span; hi += 0.08*span;
+  const X = v => pad.l + (v - series[0].x[0]) / (series[0].x[series[0].x.length-1] - series[0].x[0]) * (w - pad.l - pad.r);
+  const Y = v => h - pad.b - (v - lo) / (hi - lo) * (h - pad.t - pad.b);
+  ctx.strokeStyle = "#3a2c55"; ctx.lineWidth = 1;
+  for(let i = 0; i < 4; i++){
+    const gy = h - pad.b - (i+1)/4*(h - pad.t - pad.b);
+    ctx.beginPath(); ctx.moveTo(pad.l, gy); ctx.lineTo(w-pad.r, gy); ctx.stroke();
+    ctx.fillStyle = API.mut; ctx.font = "10px ui-monospace,monospace"; ctx.textAlign = "right";
+    ctx.fillText((lo + (i+1)/4*(hi-lo)).toPrecision(3), pad.l-6, gy+3);
+  }
+  ctx.fillStyle = API.mut; ctx.textAlign = "center";
+  ctx.fillText("time (h)", (pad.l + w - pad.r)/2, h - 4);
+  const colors = [API.acc, API.amber, API.green, "#7c3aed", "#c4b5fd", API.red];
+  series.forEach((s, i) => {
+    ctx.strokeStyle = colors[i % colors.length]; ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    const n = Math.min(s.y.length, s.x.length);
+    for(let j = 0; j < n; j++){
+      if(j === 0) ctx.moveTo(X(s.x[j]), Y(s.y[j]));
+      else ctx.lineTo(X(s.x[j]), Y(s.y[j]));
+    }
+    ctx.stroke();
+    drawSeriesLabel(ctx, w, s.name, X(s.x[n-1])+4, Y(s.y[n-1])-4);
+  });
+}
+
+function drawSeriesLabel(ctx, w, text, x, y){
+  ctx.font = "10px ui-monospace,monospace";
+  const tw = ctx.measureText(text).width;
+  const limit = w - 4;
+  if(x + tw > limit){ ctx.textAlign = "right"; ctx.fillText(text, limit, y); }
+  else { ctx.textAlign = "left"; ctx.fillText(text, x, y); }
+}
+
+function bandChart(id, band, keyName, color){
+  const cv = $(id); if(!cv) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w*dpr; cv.height = h*dpr;
+  const ctx = cv.getContext("2d"); ctx.scale(dpr, dpr);
+  ctx.clearRect(0,0,w,h);
+  const pad = {l:44, r:14, t:10, b:18};
+  let lo = Infinity, hi = -Infinity;
+  band.lo.forEach(v => { if(v < lo) lo = v; });
+  band.hi.forEach(v => { if(v > hi) hi = v; });
+  if(hi - lo < 1e-9){ hi = lo + 1; lo -= 1; }
+  const span = hi - lo;
+  lo -= 0.08*span; hi += 0.08*span;
+  const X = v => pad.l + (v - band.t_h[0]) / (band.t_h[band.t_h.length-1] - band.t_h[0]) * (w - pad.l - pad.r);
+  const Y = v => h - pad.b - (v - lo) / (hi - lo) * (h - pad.t - pad.b);
+  ctx.strokeStyle = "#3a2c55";
+  for(let i = 0; i < 4; i++){
+    const gy = h - pad.b - (i+1)/4*(h - pad.t - pad.b);
+    ctx.beginPath(); ctx.moveTo(pad.l, gy); ctx.lineTo(w-pad.r, gy); ctx.stroke();
+    ctx.fillStyle = API.mut; ctx.font = "10px ui-monospace,monospace"; ctx.textAlign = "right";
+    ctx.fillText((lo + (i+1)/4*(hi-lo)).toPrecision(3), pad.l-6, gy+3);
+  }
+  ctx.fillStyle = API.mut; ctx.textAlign = "center";
+  ctx.fillText("time (h)", (pad.l + w - pad.r)/2, h - 4);
+  ctx.fillStyle = color + "44";
+  ctx.beginPath();
+  ctx.moveTo(X(band.t_h[0]), Y(band.lo[0]));
+  band.lo.forEach((v, j) => ctx.lineTo(X(band.t_h[j]), Y(v)));
+  band.hi.slice().reverse().forEach((v, j) => ctx.lineTo(X(band.t_h[band.t_h.length-1-j]), Y(v)));
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = color; ctx.lineWidth = 1.6; ctx.beginPath();
+  band.med.forEach((v, j) => j ? ctx.lineTo(X(band.t_h[j]), Y(v)) : ctx.moveTo(X(band.t_h[j]), Y(v)));
+  ctx.stroke();
+  ctx.fillStyle = color;
+  drawSeriesLabel(ctx, w, "median " + keyName, X(band.t_h[band.t_h.length-1])+4, Y(band.med[band.med.length-1])-4);
+}
+
+function row(cells){ const tr = document.createElement("tr");
+  cells.forEach(c => { const td = document.createElement("td");
+    if(c instanceof Node) td.replaceChildren(c);
+    else td.textContent = c;
+    tr.appendChild(td); });
+  return tr;
+}
+function gradeBadge(g){
+  const s = document.createElement("span");
+  s.className = "grade"; s.style.background = sevColor(g); s.textContent = g; return s;
+}
+
+function render(c){
+  const v = $("verdict");
+  v.style.color = c.clinical.toxicity.overall_risk >= 0.5 ? API.red :
+                  (c.clinical.toxicity.overall_risk >= 0.3 ? API.amber : API.green);
+  v.textContent = c.clinical.verdict;
+  // Unhide the results section first: canvases are sized from clientWidth/
+  // clientHeight, which are 0 while the section is display:none.
+  $("results").classList.remove("hidden");
+
+  $("pk_kpis").textContent = "";
+  const pk = c.pk;
+  [["Cmax", pk.cmax_mg_l, "mg/L"], ["AUC0-t", pk.auc_last_mg_h_l, "mg·h/L"],
+   ["AUC0-inf", pk.auc_inf_mg_h_l, "mg·h/L"], ["tmax", pk.tmax_h, "h"],
+   ["Dose", c.manifest.dose_mg, "mg"], ["Route", c.manifest.route, ""]]
+    .forEach(([l, val, u]) => {
+      const d = document.createElement("div"); d.className = "kpi";
+      d.innerHTML = `<div class="l">${l}</div><div class="v">${fmt(val)}</div><div class="spark">${u}</div>`;
+      $("pk_kpis").appendChild(d);
+    });
+  lineChart("c_pk", [{ name:"plasma total", x:c.pk.t_h, y:c.pk.plasma_total }]);
+
+  const tr = c.organ.trajectories;
+  lineChart("c_liver", [
+    { name:"ALT", x:tr.t_h, y:tr.liver_alt_U_L },
+    { name:"bilirubin", x:tr.t_h, y:tr.liver_bilirubin_mg_dL },
+  ]);
+  lineChart("c_qtc", [{ name:"QTc", x:tr.t_h, y:tr.qtc_ms }]);
+  lineChart("c_gfr", [{ name:"GFR", x:tr.t_h, y:tr.gfr_ml_min }]);
+  lineChart("c_scr", [{ name:"creatinine ratio", x:tr.t_h, y:tr.scr_ratio }]);
+  lineChart("c_brain", [{ name:"brain free", x:tr.t_h, y:tr.brain_free_nm }]);
+
+  $("biomarkers").textContent = "";
+  Object.entries(c.clinical.biomarkers).forEach(([group, rows]) => {
+    const h4 = document.createElement("h4"); h4.className = "h2";
+    h4.style.textTransform = "none"; h4.textContent = group; $("biomarkers").appendChild(h4);
+    const t = document.createElement("table");
+    t.appendChild(row(["Biomarker","Value","Unit","Grade","Severity","Onset (h)","Duration (h)"]));
+    rows.forEach(b => t.appendChild(row([b.name, fmt(b.value), b.unit, gradeBadge(b.grade),
+      b.severity, opt(b.onset_h), opt(b.duration_h)])));
+    $("biomarkers").appendChild(t);
+  });
+
+  $("tox").textContent = "";
+  c.clinical.toxicity.endpoints.forEach(r => {
+    const cell = document.createElement("div");
+    const bar = document.createElement("div"); bar.className = "bar";
+    const dot = document.createElement("i");
+    dot.style.background = r.risk >= 0.5 ? API.red : (r.risk >= 0.3 ? API.amber : API.green);
+    dot.style.left = (r.risk*100) + "%";
+    bar.appendChild(dot);
+    const drv = (r.evidence.find(e => e.kind === r.driver) || {}).note || "class prior only";
+    const lab = document.createElement("div"); lab.className = "risklabel";
+    lab.innerHTML = `<span>${fmt(r.risk)} <span class="ci">[${fmt(r.ci[0])}–${fmt(r.ci[1])}]</span></span><span>${esc(drv)}</span>`;
+    cell.appendChild(bar);
+    cell.appendChild(lab);
+    $("tox").appendChild(row([r.label, cell, gradeBadge(r.grade), r.driver, esc(drv)]));
+  });
+
+  const e = c.clinical.exposure;
+  $("exprow").textContent = "";
+  [e.plasma_cmax_unbound_nm, e.liver_cmax_free_nm, e.kidney_cmax_free_nm, e.qt_ic50_nm, e.dili_ic50_nm, e.cns_ic50_nm]
+    .forEach(x => { const td = document.createElement("td"); td.textContent = opt(x); $("exprow").appendChild(td); });
+
+  renderEngagement(c);
+  renderPathway(c);
+  renderUncertainty(c);
+  renderPopulation(c);
+  renderSensitivity(c);
+}
+
+function renderEngagement(c){
+  const o = c.occupancy || { primary: 0, ranked: [] };
+  $("occ_rows").textContent = "";
+  (o.ranked || []).forEach(r => {
+    $("occ_rows").appendChild(row([r.site, fmt(r.peak), fmt(r.time_at_target_h)]));
+  });
+  if(!(o.ranked || []).length){
+    $("occ_rows").appendChild(row(["—", "—", "—"]));
+  }
+  $("occ_primary").textContent = "primary target peak occupancy " + fmt(o.primary);
+}
+
+function renderPathway(c){
+  const html = $("pathway_html");
+  const p = c.pathway || {};
+  if(!p.available){
+    html.textContent = "pathway simulation skipped (pathway layer disabled)";
+    return;
+  }
+  html.textContent = "";
+  const t = document.createElement("table");
+  t.appendChild(row(["Readout node", "Peak activity"]));
+  t.appendChild(row([p.readout || "readout", fmt(p.readout_peak)]));
+  html.appendChild(t);
+}
+
+function renderUncertainty(c){
+  const u = c.uncertainty;
+  $("unc_panel").classList.toggle("hidden", !u);
+  if(!u) return;
+  $("unc_meta").textContent = `${u.n_runs} ensemble runs · CV=${u.cv} · seed=${u.seed}`;
+  $("unc_verdicts").textContent = "";
+  Object.entries(u.verdict_counts).forEach(([label, count]) => {
+    const d = document.createElement("div"); d.className = "kpi";
+    d.innerHTML = `<div class="l">verdict</div><div class="v" style="font-size:14px">${esc(label)}</div><div class="spark">n=${count}</div>`;
+    $("unc_verdicts").appendChild(d);
+  });
+  bandChart("c_unc_pk", u.band_90.plasma_total_mg_l, "plasma", API.acc);
+  bandChart("c_unc_qtc", u.band_90.qtc_ms, "QTc", API.amber);
+  bandChart("c_unc_alt", u.band_90.alt_u_l, "ALT", API.green);
+}
+
+function renderPopulation(c){
+  const p = c.population;
+  $("pop_panel").classList.toggle("hidden", !p);
+  if(!p) return;
+  $("pop_meta").textContent = `cohort of ${p.n_individuals} · age ${p.age_y_range[0]}–${p.age_y_range[1]} y · seed=${p.seed}`;
+  $("pop_rows").textContent = "";
+  const endpoints = Object.keys(p.risk_q5_q50_q95);
+  endpoints.forEach(ep => {
+    const q = p.risk_q5_q50_q95[ep];
+    const i1 = p.incidence_grade_ge_1[ep] ?? 0;
+    const i2 = p.incidence_grade_ge_2[ep] ?? 0;
+    $("pop_rows").appendChild(row([ep, fmt(q[0]), fmt(q[1]), fmt(q[2]), i1, i2]));
+  });
+}
+
+function renderSensitivity(c){
+  const s = c.sensitivity;
+  $("sens_panel").classList.toggle("hidden", !s);
+  if(!s) return;
+  $("sens_rows").textContent = "";
+  const local = Object.fromEntries(s.drivers_overall_risk.map(([k, v]) => [k, v]));
+  const sobol = s.sobol.indices;
+  const first = sobol.overall_risk ? sobol.overall_risk.first : [];
+  const total = sobol.overall_risk ? sobol.overall_risk.total : [];
+  s.keys.forEach((key, i) => {
+    $("sens_rows").appendChild(row([
+      key, fmt(local[key] ?? 0), fmt(first[i] ?? 0), fmt(total[i] ?? 0),
+    ]));
+  });
+}
+
+function fmt(v){ return v == null ? "n/a" : (typeof v === "number" ? (+v).toPrecision(4) : String(v)); }
+function opt(v){ return v == null || v === "" ? "—" : fmt(v); }
+function esc(s){ const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+async function doRun(){
+  $("spin").classList.remove("hidden");
+  $("run").disabled = true;
+  $("err").style.display = "none";
+  try{
+    const payload = {
+      benchmark: $("benchmark").value,
+      smiles: $("smiles").value.trim() || null,
+      dose: $("dose").value, route: $("route").value, sex: $("sex").value,
+      age: $("age").value, height: $("height").value, weight: $("weight").value,
+      no_pathway: $("nopath").checked,
+      with_uncertainty: $("with_unc").checked,
+      with_population: $("with_pop").checked,
+      with_sensitivity: $("with_sens").checked,
+    };
+    const r = await fetch("/api/run", { method:"POST",
+      headers: { "Content-Type":"application/json" },
+      body: JSON.stringify(payload) });
+    const c = await r.json();
+    if(c.error){ $("err").textContent = "Error: " + c.error; $("err").style.display = "block"; return; }
+    render(c);
+    $("results").scrollIntoView({ behavior:"smooth" });
+  }catch(e){
+    $("err").textContent = "Error: " + e; $("err").style.display = "block";
+  }finally{
+    $("spin").classList.add("hidden");
+    $("run").disabled = false;
+  }
+}
+
+init();
+</script>
+</body>
+</html>
