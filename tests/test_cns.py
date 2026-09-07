@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from drugos.organ.cns import CnsParams, cns_grade, simulate_cns
+from drugos.organ.cns import CnsParams, cns_grade, kpu_brain_from_bbb, simulate_cns
 
 
 def test_cns_params_validation() -> None:
@@ -59,3 +59,14 @@ def test_simulate_cns_custom_params() -> None:
     assert result.peak_brain_free_nm == pytest.approx(1000.0, rel=1e-9)
     assert result.exposure_ratio == pytest.approx(0.2, rel=1e-9)
     assert result.grade == 1
+
+
+def test_kpu_brain_from_bbb_mapping() -> None:
+    assert kpu_brain_from_bbb(None) == 1.0
+    assert kpu_brain_from_bbb(0.0) == 0.2
+    assert kpu_brain_from_bbb(0.49) == 0.2
+    assert kpu_brain_from_bbb(0.5) == 1.0
+    assert kpu_brain_from_bbb(0.9) == 1.0
+    assert kpu_brain_from_bbb(1.0) == 1.0
+    assert kpu_brain_from_bbb(-0.5) == 0.2
+    assert kpu_brain_from_bbb(2.0) == 1.0

@@ -24,11 +24,12 @@ from drugos.inputs.parse_structure import parse_structure
 from drugos.inputs.resolve_human import resolve_human
 from drugos.organ.base import NDArray
 from drugos.organ.cardiac import CardiacResult, simulate_cardiac
-from drugos.organ.cns import CnsParams, CnsResult, simulate_cns
+from drugos.organ.cns import CnsParams, CnsResult, kpu_brain_from_bbb, simulate_cns
 from drugos.organ.feedback import OrganFeedback, apply_pk_scaling, feedback_from_results
 from drugos.organ.kidney import KidneyResult, simulate_kidney
 from drugos.organ.liver import LiverParams, LiverTrajectory, liver_params_from_panel, simulate_liver
-from drugos.pathway.simulator import PathwayResult, mapk_cascade, simulate_pathway
+from drugos.pathway.sbml_pathway import simulate_sbml_pathway
+from drugos.pathway.simulator import PathwayResult
 from drugos.pk.admet import AdmetOutput
 from drugos.pk.partitions import partition_from_molecule
 from drugos.pk.pbpk_build import AbsorptionParams, PBPKModel
@@ -122,6 +123,7 @@ class ExposureProfile:
     dili_ic50_nm: float | None
     cns_ic50_nm: float | None
     cns_anchored: bool = False
+    cns_kpu_brain: float = 1.0
 
 
 @dataclass(slots=True)
@@ -213,6 +215,7 @@ class RunResult:
                     "peak_brain_free_nm": round(float(cns.peak_brain_free_nm), 3),
                     "exposure_ratio": round(cns.exposure_ratio, 3),
                     "grade": cns.grade,
+                    "kpu_brain": self.exposure.cns_kpu_brain,
                 },
                 "trajectories": {
                     "t_h": liver.t_h.tolist(),
@@ -327,6 +330,7 @@ def _organ_state(
     KidneyResult,
     CnsResult,
     PathwayResult | None,
+    float,
 ]:
     """Run the downstream stages (occupancy -> organ QST -> pathway) on ``pk``."""
     liver_free = pk.unbound_tissues["liver"]
@@ -357,22 +361,24 @@ def _organ_state(
         scr_base_umol_l=_DEFAULT_SCR_BASE_UMOL_L,
     )
 
-    # CNS is driven by the PBPK brain compartment free exposure (which already
-    # folds in the brain:plasma unbound partition ratio), so kpu_brain=1.0.
+    # CNS is driven by the PBPK brain compartment free exposure.  The R&R brain
+    # partition is already folded in, so the residual kpu_brain scale is 1.0
+    # unless ADMET-AI's BBB_Martins head predicts a non-penetrant (then 0.2).
+    kpu_brain = kpu_brain_from_bbb(spec.admet.BBB if spec.admet is not None else None)
     cns = simulate_cns(
         pk.t,
         pk.unbound_tissues["brain"],
         spec.mw,
-        CnsParams(ic50_nm=spec.cns_ic50_nm or _CNS_IC50_DEFAULT_NM, kpu_brain=1.0),
+        CnsParams(ic50_nm=spec.cns_ic50_nm or _CNS_IC50_DEFAULT_NM, kpu_brain=kpu_brain),
     )
 
     pathway: PathwayResult | None = None
     if spec.include_pathway and primary_signal is not None:
-        pathway = simulate_pathway(
-            mapk_cascade(), primary_signal.t_h, primary_signal.occupancy, n_eval=spec.n_eval
+        pathway = simulate_sbml_pathway(
+            primary_signal.t_h, primary_signal.occupancy, n_eval=spec.n_eval
         )
 
-    return panel, primary_signal, liver, block, cardiac, kidney, cns, pathway
+    return panel, primary_signal, liver, block, cardiac, kidney, cns, pathway, kpu_brain
 
 
 def _organ_feedback(
@@ -398,15 +404,31 @@ def run_pipeline(spec: RunSpec) -> RunResult:
     metrics = compute_pk_metrics(pk.t, pk.plasma_total, pk.dose_mg, pk.route)
 
     for _ in range(spec.feedback_loop):
-        (_panel, _primary, liver, _block, _cardiac, kidney, _cns, _pathway) = _organ_state(
-            pk, model, spec
-        )
+        (
+            _panel,
+            _primary,
+            liver,
+            _block,
+            _cardiac,
+            kidney,
+            _cns,
+            _pathway,
+            _kpu,
+        ) = _organ_state(pk, model, spec)
         model = apply_pk_scaling(model, _organ_feedback(model, liver, kidney))
         pk = simulate_pbpk(model, tmax_h=spec.tmax_h, n_eval=spec.n_eval)
 
-    (panel, primary_signal, liver, block, cardiac, kidney, cns, pathway) = _organ_state(
-        pk, model, spec
-    )
+    (
+        panel,
+        primary_signal,
+        liver,
+        block,
+        cardiac,
+        kidney,
+        cns,
+        pathway,
+        cns_kpu_brain,
+    ) = _organ_state(pk, model, spec)
 
     physiology = model.physiology
     liver_free = pk.unbound_tissues["liver"]
@@ -428,6 +450,7 @@ def run_pipeline(spec: RunSpec) -> RunResult:
         dili_ic50_nm=_dili_ic50(spec),
         cns_ic50_nm=spec.cns_ic50_nm or _CNS_IC50_DEFAULT_NM,
         cns_anchored=spec.cns_ic50_nm is not None,
+        cns_kpu_brain=cns_kpu_brain,
     )
 
     toxicity = _score_clinical(organ, exposure, spec.admet)

@@ -19,6 +19,29 @@
 - Runtime requirement: `R` / `Rscript` must be on `PATH` at import time of
   `drugos.rbridge`; verdicts stream to the `r_verify` contract block and the
   web report.
+- **Myokit cardiac lane (validation R-3):** `myokit>=1.39` (BSD-3, pip) drives
+  the vendored O'Hara-Rudy 2011 human ventricular model
+  (`data/models/ohara-2011.mmt`) behind `drugos.organ.cardiac_ap`. Myokit's C
+  codegen needs system **SUNDIALS** headers — `conda install -c conda-forge
+  sundials` (present at `/opt/anaconda3/envs/drug_os/include/sundials`),
+  `apt-get install libsundials-dev`, or `brew install sundials`. Myokit is
+  imported **lazily** inside `_import_myokit()` (its import chain touches
+  `scipy.special → numpy.fft`, which breaks the coverage tracer on numpy 2.x
+  if imported eagerly); full-suite `--cov` runs are clean.
+- **python-libsbml pathway lane (validation R-5):** `python-libsbml>=5.20`
+  (BSD, pip) parses the vendored Huang/Levchenko ultrasensitive MAPK cascade
+  (`data/models/huang1996-mapk-cascade.xml`, BioModels BIOMD0000000009, CC0)
+  behind `drugos.pathway.sbml_pathway`. The bindings ship without type
+  annotations; the consumed subset is typed by `stubs/libsbml/__init__.pyi`
+  (G2 policy), and the native module is imported **lazily** inside
+  `_import_libsbml()` so the packaging/test import chain stays light.
+- **Kidney / cholestasis lanes (validation R-6 / R-7):** pure NumPy/SciPy —
+  no new runtime dependencies. R-6 implements the published CKD-EPI 2021
+  race-free creatinine equation (`drugos.organ.kidney`); R-7 ports the
+  open-access de Bruijn & Rietjens 2024 GCDCA bile-acid PBK equations
+  (`drugos.organ.liver.simulate_gcdca_pbk`, 12-ODE enterohepatic loop,
+  LSODA) and reads the vendored BSEP IC50 reference anchors
+  (`data/models/bsep_shh_ic50_reference.json`).
 
 ## 2. Core Stack by Concern
 
@@ -45,6 +68,7 @@
 | SciPy (`solve_ivp`, LSODA/Radau) | ODE solves for compartmental PBPK, occupancy, pathway, and organ models (PySB/pysb-pkpd dropped in 2026.9.x — rule-based sugar replaced by direct ODE implementation) |
 | OpenPKPD | population PK/PD estimation/simulation alternative; SBML import |
 | myokit (optional) | cardiac cell models (QT/hERG axis) |
+| python-libsbml | SBML L2V4 parsing for the vendored MAPK pathway model (R-5) |
 | numba / numba jit | optional speedup of inner loops |
 
 ### 2.4 Data Engineering & Storage

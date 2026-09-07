@@ -69,6 +69,25 @@ def cns_grade(ratio: float, thresholds: tuple[float, float, float, float]) -> in
     return min(4, sum(1 for t in thresholds if ratio >= t))
 
 
+def kpu_brain_from_bbb(bbb_prob: float | None) -> float:
+    """Residual brain:plasma unbound partition from an ADMET-AI BBB_Martins call.
+
+    ``BBB_Martins`` (Martins et al. 2012 classifier head, retrained in ADMET-AI,
+    Swanson et al. 2024) is a P(BBB-penetrant) probability, not a partition
+    value.  We map the verdict to one of the two published-behavior partition
+    classes used in production CNS screening: a predicted penetrant
+    (``P >= 0.5``) keeps the full passive partition (1.0 — the pipeline's
+    free-drug default), a predicted non-penetrant (``P < 0.5``) is restricted to
+    0.2, the published-conservative lower bound for poor BBB compounds.  ``None``
+    (no ADMET-AI call, e.g. benchmark runs) returns 1.0: no restriction is
+    applied and the caller keeps its own default.
+    """
+    if bbb_prob is None:
+        return 1.0
+    p = float(np.clip(bbb_prob, 0.0, 1.0))
+    return 1.0 if p >= 0.5 else 0.2
+
+
 def simulate_cns(
     t_h: NDArray,
     plasma_free_mg_l: NDArray,
@@ -94,4 +113,10 @@ def simulate_cns(
     )
 
 
-__all__ = ["CnsParams", "CnsResult", "cns_grade", "simulate_cns"]
+__all__ = [
+    "CnsParams",
+    "CnsResult",
+    "cns_grade",
+    "kpu_brain_from_bbb",
+    "simulate_cns",
+]

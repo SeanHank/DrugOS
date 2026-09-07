@@ -25,6 +25,24 @@ cases, not from authority.
   around the gate.
 - **New model features add a validation case before merge, not after.** The
   feature ships with the empirical/analytic check that pins its behavior.
+- **Production-model upgrades are catalogued.** Any new third-party model /
+  dataset wired into the pipeline gets a row in `doc/12-production-models.md`,
+  a status entry in `doc/11`, a manifest pin under `data/` if vendored, and a
+  validation case. Required-R (R-1), the ORd cardiac lane (R-3), the ADMET-AI
+  BBB→CNS partition (R-4), the Huang/Levchenko SBML MAPK cascade (R-5), the
+  CKD-EPI 2021 race-free GFR baseline (R-6) and the de Bruijn & Rietjens
+  bile-acid cholestasis PBK (R-7) are the current anchors — never revert them
+  to optional/fallback status.
+- **No silent fallbacks for the anchors.** The R bridge (`r_verify`), the
+  corpora calibration (R-2), the ORd cross-check (R-3), the BBB/CNS partition
+  (R-4), the SBML pathway lane (R-5), the CKD-EPI GFR wiring (R-6) and the
+  bile-acid cholestasis wiring (R-7) are mandatory in the G4 suite; an
+  absent runtime is a hard error, matching the G5 no-fallback audit.
+- **Respect upstream model licenses.** Only port equations from *openly
+  licensed* publications (CC BY 4.0 etc.); do not copy code from NC-ND
+  repositories even when the equations are freely published (see the
+  de Bruijn & Rietjens cholestasis anchor, doc/12 D7). Every vendored file
+  needs a manifest entry with source + license + retrieved date.
 
 ## How to propose a change
 

@@ -48,7 +48,7 @@ This chain is the organizing principle of the whole pipeline. Each arrow maps to
 | drug -> in-vivo concentration | Physiologically Based Pharmacokinetics (PBPK), compartmental PK | PK-Sim / Open Systems Pharmacology; GastroPlus ACAT; ADMET-AI |
 | concentration -> target binding | Drug-target interaction (DTI) / binding kinetics, receptor occupancy | AI binding-affinity models; DrugBank targets; target-mediated drug disposition (TMDD) |
 | target binding -> signaling pathway | Quantitative Systems Pharmacology (QSP), signaling network ODEs | MET/EGFR QSP models; Physiome Project; pathway databases (KEGG, Reactome) |
-| signaling pathway -> organ function | Organ-level physiological / quantitative systems toxicology (QST) models | DILIsym (liver); cardiovascular circulation models; neural nephron (kidney) |
+| signaling pathway -> organ function | Organ-level physiological / quantitative systems toxicology (QST) models | de Bruijn & Rietjens bile-acid PBK (liver cholestasis anchor, CC BY 4.0); CKD-EPI 2021 race-free (kidney GFR baseline); O'Hara-Rudy 2011 cardiac AP (ORd); Huang/Levchenko MAPK cascade (pathway) |
 | organ function -> clinical phenotype | Biomarker-to-outcome translation, adverse outcome pathways (AOP), clinical endpoints | QSP-to-biomarker translational reviews; AOP framework |
 
 ## 3. Inputs and Outputs
@@ -104,6 +104,6 @@ Document 02 (`02-literature-review.md`) anchors every architectural decision in 
 - Open Systems Pharmacology Suite (PK-Sim, MoBi) and its validated whole-body PBPK models
 - ADMET-AI (Chemprop-RDKit GNN trained on 41 TDC ADMET datasets)
 - AI protein-ligand binding affinity models and DTI prediction reviews
-- DILIsym quantitative systems toxicology model and DILI mechanistic sub-models
+- DILIsym quantitative systems toxicology model and DILI mechanistic sub-models (proprietary; the liver cholestasis axis is implemented via the openly published de Bruijn & Rietjens 2024 bile-acid PBK, R-7)
 - Physiome Project / Virtual Physiological Human organ models
 - PK/PD Emax and target-occupancy (TO) modeling theory

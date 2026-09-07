@@ -195,7 +195,7 @@ Map pathway/toxicity signals to organ-level functional endpoints. The baseline (
 
 Mechanistic sub-models:
 
-1. **Bile-acid transport inhibition** — BSEP/NTCP/MRP3/MRP4 inhibition from Stage 2 safety-target data (IC50); enterocyte/hepatocyte bile-acid pools; basolateral and canalicular efflux; predicts cholestasis and biliary biomarkers.
+1. **Bile-acid transport inhibition** — BSEP/NTCP/MRP3/MRP4 inhibition from Stage 2 safety-target data (IC50); enterocyte/hepatocyte bile-acid pools; basolateral and canalicular efflux; predicts cholestasis and biliary biomarkers. **The cholestasis axis is anchored to the production-validated GCDCA bile-acid PBK of de Bruijn & Rietjens 2024** (paper CC BY 4.0; validated vs clinical cholestasis incidence of ~18 marketed drugs, R-7, doc/12 row 4c): free-hepatic drug competitively inhibits BSEP efflux (`Km_app = Km_BSEP·(1 + C_free/Ki)`, `Ki = IC50/2`) and the intrahepatic pool fold-ratio above the 1.5× risk threshold drives cholestasis.
 2. **Mitochondrial dysfunction** — ETC complex inhibition (in-vitro IC50), ATP production shortfall, decrease in mitochondrial membrane potential; with adaptive mitogenesis term.
 3. **Oxidative stress** — reactive-oxygen-species generation vs. glutathione buffer; GSH depletion; protein/lipid damage.
 4. **Hepatocyte death** — apoptosis (caspase-driven via TNF/ligand pathway) + necrosis (ATP/oxidative-threshold-driven); includes regeneration dynamics.
@@ -204,7 +204,7 @@ Mechanistic sub-models:
 **Inputs.** PBPK liver tissue exposure (`C_liver(t)`, free), plus in-vitro IC50/assay parameters (BSEP inhibition, ETC inhibition, oxidative stress) from literature/ChEMBL/in-vitro consortia data.
 **Outputs.** ALT/AST/total-bilirubin serum trajectories; dead-cell fraction; DILI-grade classification (ALT > 3x ULN; Hy's Law criteria). Follows the fezolinetant DILIsym precedent where PBPK exposure + in-vitro toxicity parameters predict liver signal.
 
-> **Implemented (2026.9.0):** `src/drugos/organ/liver.py` — cholestasis, mitochondrial (ETC, adaptive mitogenesis), redox/GSH, hepatocyte death (sigmoid kill + regeneration) ODEs; `LiverParams` carries compound-specific IC50s, `liver_params_from_panel()` wires the Stage-2 safety panel. Validated: acetaminophen overdose reproduces ALT > 3x ULN with Hy's Law while therapeutic dosing stays grade 0/1 (L2 case).
+> **Implemented (2026.9.0):** `src/drugos/organ/liver.py` — cholestasis (de Bruijn & Rietjens bile-acid PBK, R-7), mitochondrial (ETC, adaptive mitogenesis), redox/GSH, hepatocyte death (sigmoid kill + regeneration) ODEs; `LiverParams` carries compound-specific IC50s, `liver_params_from_panel()` wires the Stage-2 safety panel. Validated: acetaminophen overdose reproduces ALT > 3x ULN with Hy's Law while therapeutic dosing stays grade 0/1 (L2 case, with the cholestasis ranking pinned by R-7).
 
 ### 4.3 Cardiovascular — Lumped Circulation + Electrical Axis
 
@@ -216,10 +216,10 @@ Mechanistic sub-models:
 
 ### 4.4 Kidney — Nephron + GFR Model
 
-- **Nephron-level model** (Physiome neural-nephron lineage): glomerular filtration, tubular reabsorption/secretion; clearance coupling with Stage 1 renal elimination.
+- **Nephron-level model** (Physiome neural-nephron lineage, catalogued P7): glomerular filtration, tubular reabsorption/secretion; clearance coupling with Stage 1 renal elimination.
 - **Nephrotoxicity endpoints**: acute kidney injury proxies (GFR decline, tubular injury biomarker (KIM-1 heteromer in practice)) — the baseline keeps serum creatinine + GFR from renal function sub-model.
 
-> **Implemented (2026.9.0):** `src/drugos/organ/kidney.py` — nephron injury sigmoid drives a floored GFR; serum creatinine from the closed-form balance Scr = P/GFR; KDIGO AKI stage from Scr ratio/GFR drop. Validated: exact Scr=P/GFR at zero exposure plus monotonic KDIGO escalation (L2 case).
+> **Implemented (2026.9.0):** `src/drugos/organ/kidney.py` — nephron injury sigmoid drives a floored GFR; serum creatinine from the closed-form balance Scr = P/GFR; KDIGO AKI stage from Scr ratio/GFR drop. **The baseline GFR is anchored to the CKD-EPI 2021 race-free creatinine equation** (R-6, doc/12 row 4b) whenever a measured serum creatinine is carried on the profile (`ckdepi_2021_egfr`, BSA-scaled via Mosteller). Validated: exact Scr=P/GFR at zero exposure, monotonic KDIGO escalation, and CKD-EPI reference points / pipeline wiring (L2 cases).
 
 ### 4.5 Feedback to PK
 

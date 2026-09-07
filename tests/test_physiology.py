@@ -98,6 +98,25 @@ def test_renal_impairment() -> None:
     assert mod.gfr_l_min < mild.gfr_l_min
 
 
+def test_serum_creatinine_drives_ckdepi_gfr() -> None:
+    from drugos.organ.kidney import ckdepi_2021_egfr
+
+    profile = HumanProfile(
+        sex=FEMALE,
+        age_y=45.0,
+        height_cm=165.0,
+        weight_kg=60.0,
+        serum_creatinine_mg_dl=1.0,
+    )
+    phys = build_human(profile)
+    bsa = mosteller_bsa(165.0, 60.0)
+    expected = ckdepi_2021_egfr(1.0, 45.0, True, bsa_m2=bsa)
+    assert phys.gfr_ml_min == pytest.approx(expected, rel=1e-6)
+    # A female with Scr 1.0 is a moderately low baseline: well below the
+    # sex/age default of 110 mL/min.
+    assert phys.gfr_ml_min < 100.0
+
+
 def test_hepatic_impairment_and_heart_failure() -> None:
     base = _phys()
     mild_liver = _phys(mild_hepatic_impairment=True)

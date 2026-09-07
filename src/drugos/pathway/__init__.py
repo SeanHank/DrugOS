@@ -13,6 +13,7 @@ from drugos.pathway.graph import (
     ReversibleBinding,
     SourceProduction,
 )
+from drugos.pathway.sbml_pathway import parse_sbml, simulate_sbml_pathway
 from drugos.pathway.simulator import (
     CompiledPathway,
     DoseResponseFit,
@@ -36,6 +37,8 @@ __all__ = [
     "compile_model",
     "dose_response",
     "mapk_cascade",
+    "parse_sbml",
     "pathway_steady_state",
     "simulate_pathway",
+    "simulate_sbml_pathway",
 ]

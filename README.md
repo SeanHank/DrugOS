@@ -11,7 +11,7 @@ the whole biology on the way rendered as equations you can read.
 
 <p align="center">
   <a href="https://www.python.org/downloads/"><img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-4b7bec?logo=python&logoColor=fff&labelColor=232946"></a>
-  <a href="#validation--quality-gates"><img alt="Validation 18/18" src="https://img.shields.io/badge/validation-18%2F18%20green-2acc74?style=flat"></a>
+  <a href="#validation--quality-gates"><img alt="Validation 25/25" src="https://img.shields.io/badge/validation-25%2F25%20green-2acc74?style=flat"></a>
   <a href="#validation--quality-gates"><img alt="Coverage 100%" src="https://img.shields.io/badge/coverage-100%25-2acc74?style=flat"></a>
   <a href="https://github.com/"><img alt="AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-5865f2?style=flat"></a>
   <a href="doc/09-quality-gate.md"><img alt="Lint" src="https://img.shields.io/badge/lint-ruff%20+%20mypy%20--strict-9855e2?style=flat"></a>
@@ -41,10 +41,10 @@ validation suite whose **cases must all stay green before anything is released**
  Target     receptor binding kinetics → occupancy & time-at-target
    │
    ▼
- Pathway    signal transduction (QSP ODEs — MAPK cascade, baseline 2026.9.0)
-   │
-   ▼
- Organ      liver (DILI) · cardiac (QTc/TdP) · kidney (AKI) · CNS brain exposure
+Pathway    signal transduction (QSP ODEs — Huang/Levchenko SBML MAPK cascade)
+    │
+    ▼
+  Organ      liver (DILI, bile-acid cholestasis PBK) · cardiac (QTc/TdP) · kidney (AKI/GFR, CKD-EPI) · CNS brain exposure
    │
    ▼
  Clinical   graded biomarkers + composite toxicity verdict (DILI / QT / AKI / CNS)
@@ -59,10 +59,10 @@ validation suite whose **cases must all stay green before anything is released**
 |---|---|---|
 | **Exposure** | C(t) in 83 tissue/plasma compartments | PBPK + ADMET + RDKit molecular descriptors |
 | **Target** | receptor binding & occupancy kinetics | affinity-driven occupancy model |
-| **Pathway** | signal transduction after exposure | QSP ODEs (MAPK cascade built in) |
-| **Organ — liver** | DILI trajectory, ALT/AST/bilirubin, Hy's Law | QST dose–response + mechanistic grade |
-| **Organ — cardiac** | QTc/TdP risk, ΔQTc, MAP | ion-channel QST + Fridericia correction |
-| **Organ — kidney** | AKI grade, serum creatinine, GFR | GFR/creatinine QST |
+| **Pathway** | signal transduction after exposure | QSP ODEs (Huang/Levchenko SBML MAPK cascade, vendored) |
+| **Organ — liver** | DILI trajectory, ALT/AST/bilirubin, Hy's Law | QST dose–response + mechanistic grade; cholestasis axis anchored to the de Bruijn & Rietjens 2024 bile-acid PBK (R-7) |
+| **Organ — cardiac** | QTc/TdP risk, ΔQTc, MAP | ion-channel QST + Fridericia correction; ORd-2011 ionic cross-check (R-3) |
+| **Organ — kidney** | AKI grade, serum creatinine, GFR | GFR/creatinine QST; GFR baseline = CKD-EPI 2021 race-free from serum creatinine when present (R-6) |
 | **Organ — CNS** | brain free exposure trajectory | passive blood–brain barrier model |
 | **Clinical** | graded biomarkers + composite verdict | three-line fusion (mechanistic / exposure / structural) |
 | **Decision** | 90 % uncertainty bands · cohort incidence · Sobol/OAT sensitivity · prospective anchoring | D21–D24 ensembles over the full pipeline |
@@ -154,8 +154,19 @@ that runs the live pipeline in your browser:
 
 ## Validation & Quality Gates
 
+**Validation tier** — the pipeline's stages are anchored to
+**production-validated, open-source models** (`doc/12-production-models.md`):
+wheel-strength ADMET/T priors from **ADMET-AI**, measured hERG + hERG Central
+corpora for target binding (R-2), the **O'Hara–Rudy 2011** human ventricular
+AP model (BSD-3 Myokit encoding) as the cardiac cross-check (R-3), the
+**CKD-EPI 2021 race-free** creatinine equation as the kidney GFR baseline
+(R-6), the **de Bruijn & Rietjens 2024 GCDCA bile-acid PBK** (CC BY 4.0) as
+the liver cholestasis anchor (R-7), and a **required-R** literature-PK
+estimator that re-derives every clearance/AUC result in the R runtime (R-1,
+agreement gated ≤ 2 %).
+
 `validation/` holds the tier ladder; `python validation/run_validation.py`
-regenerates `validation/report.md` (currently **18/18 cases green**):
+regenerates `validation/report.md` (currently **25/25 cases green**):
 
 | Tier | Case | Checks |
 |---|---|---|
@@ -164,6 +175,11 @@ regenerates `validation/report.md` (currently **18/18 cases green**):
 | L2 limit | clinical grading | exposure line vs prior-only fusion, mechanistic grade ladder |
 | L2 limit | risk ordering | dofetilide QT ≫ warfarin QT, dose–DILI separability |
 | L3 empirical | benchmark suite | mass balance, dose proportionality, occupancy, pathway, organ PK |
+| L3 empirical | required-R (R-1) | R-literature CL/AUC/t½ agreement ≤ 2 % on all benchmarks, `r:agree` |
+| L3 empirical | corpus calibration (R-2) | measured hERG IC50 geomean ≈ 26 nM; corpus %-inhibition long tail → per-compound hERG override |
+| L3 empirical | ORd cardiac (R-3) | ORd 2011 baseline APD90 266 ms ∈ [200,350]; IKr block prolongs ΔAPD90 ≥ 30 ms (measured ≈ 115 ms); warfarin control = 0 |
+| L2 limit | CKD-EPI 2021 (R-6) | male 60 y Scr 1.0 → 86.2 mL/min/1.73 m²; female lower at same Scr; BSA-scaled absolute GFR; Scr-profile drives `gfr_ml_min`; no-Scr keeps default |
+| L2 limit | bile-acid cholestasis PBK (R-7) | ritonavir-class IC50 0.2 µM → ~10.3× intrahepatic GCDCA (cholestatic); itraconazole-class 10 mM → 1.0× (benign); rank order in Ki; Ki=IC50/2 |
 
 **Quality gate** — `python scripts/release.py gates` is the single release gate:
 `scripts/release.py` (the merged successor of the former `quality_gate.sh`)
@@ -173,10 +189,14 @@ runs G1–G4 and a **no-silent-fallback audit**:
 - **G2** mypy `--strict` across `src/drugos` — no errors
 - **G3** pytest with **100 % branch coverage** of `src/drugos`, no
   exclusions
-- **G4** validation suite — 18/18 green, report regenerated
+- **G4** validation suite — 25/25 green, report regenerated
 - **G5** fallback audit — every `except` handler in the package must surface an
   explicit error; silent swallowing is a hard failure (inventory pinned in
   `scripts/fallback_allowlist.json`)
+
+The ORd lane needs `myokit>=1.39` (pip) plus system **SUNDIALS** headers for
+myokit's C codegen (`conda install -c conda-forge sundials`) — see
+`doc/06 §1`.
 
 See [`doc/09-quality-gate.md`](doc/09-quality-gate.md) for the full contract.
 
@@ -209,7 +229,7 @@ src/drugos/
   inputs/       # structure / route / dose / human-profile parsing
   pk/           # ADMET parameterization + whole-body PBPK
   target/       # target identification + binding occupancy
-  pathway/      # signal-transduction QSP (MAPK cascade)
+  pathway/      # signal-transduction QSP (vendored Huang/Levchenko SBML MAPK default)
   organ/        # liver · cardiac (QTc) · kidney · CNS QST
   clinical/     # biomarkers + composite toxicity fusion
   robustness/   # D21 uncertainty · D22 population · D23 sensitivity
@@ -226,7 +246,9 @@ Start with `doc/01-project-overview.md`, then `doc/05-methodology-pipeline.md`:
 
 `doc/01` overview · `doc/02` data & datasets · `doc/03` system architecture ·
 `doc/04` module design · `doc/05` methodology & pipeline · `doc/06` tech stack ·
-`doc/07` roadmap · `doc/08` scope & limits · `doc/09` quality gate
+`doc/07` roadmap · `doc/08` scope & limits · `doc/09` quality gate ·
+`doc/10` dataset comparability · `doc/11` download status ·
+`doc/12` production-validated model matrix
 
 ## Community
 

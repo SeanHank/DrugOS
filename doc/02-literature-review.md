@@ -137,6 +137,11 @@ The literature supports the following validation ladder that DrugOS will follow:
 8. Mager, D. E.; Jusko, W. J. Target-mediated drug disposition. J. Pharmacokinet. Pharmacodyn. 2001.
 9. Zhou, H. et al. Recent advances in ML predictions of protein-ligand binding affinities. Curr. Opin. Struct. Biol. 2026.
 10. IPBind: geometric deep learning binding affinity prediction, arXiv:2504.16261 (2025).
+11. O'Hara, T.; Virág, L.; Varró, A.; Rudy, Y. Simulation of the undiseased human cardiac ventricular action potential: formulation and experimental validation. PLoS Comput. Biol. 2011, 7(5), e1002061. Human ventricular AP model; BSD-3 Myokit encoding vendored as the R-3 cardiac anchor (doc/12).
+12. Dutta, S.; Chang, K. C.; et al. (Li, Z.). Optimization of an in-silico cardiac cell model for proarrhythmia risk assessment (ORd–CiPA v1). Front. Physiol. 2017, 8, 616. Vendored retune; multi-ion-channel upgrade path.
+13. Du, F.; et al. hERG Central: a large, curated corpus of hERG dose–response measurements. J. Chem. Inf. Model. 2022 (Harvard Dataverse doi:10.7910/DVN/7BVDG8). Calibration anchor for target-binding (R-2).
+14. Mirams, G. R.; et al. Myokit: a simple, fast and flexible cardiac cell modelling package. (myokit.org, BSD-3).
+15. Swanson, K.; et al. ADMET-AI: a machine learning ADMET platform. bioRxiv/Nat. Mach. Intell. 2024 (doi:10.1093/bioinformatics/btae416). Production-validated ADMET/T priors (doc/12 row 1).
 11. CORDIAL: interaction-only deep learning affinity ranking, PNAS 2025 (10.1073/pnas.2508998122).
 12. Zia, A. et al. Drug-target interaction/affinity prediction: deep learning models and advances review. Comput. Biol. Med. 2025.
 13. MET-pathway multiscale QSP model. Front. Pharmacol. 2025 (10.3389/fphar.2025.1685468).

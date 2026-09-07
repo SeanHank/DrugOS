@@ -8,6 +8,8 @@ safety panel into organ functional outcomes:
                    DILI grade, Hy's Law).
 * ``cardiac``    — hERG/QT electrical axis (QTc, TdP band) + lumped
                    circulation hemodynamics (MAP, CVP, CO, SV).
+* ``cardiac_ap`` — production-validated ORd (O'Hara-Rudy 2011) APD90
+                   cross-check lane for the cardiac axis (validation R-3).
 * ``kidney``     — nephron injury -> GFR + serum creatinine, KDIGO AKI grade.
 * ``cns``        — brain free exposure (free-drug hypothesis) + margin grade.
 * ``feedback``   — organ dysfunction folded back into PK (4.5).
@@ -24,6 +26,7 @@ from drugos.organ.cardiac import (
     simulate_hemodynamics,
     tdpr_band,
 )
+from drugos.organ.cardiac_ap import Apd90Result, apd90_from_trace, ord_apd90
 from drugos.organ.cns import CnsParams, CnsResult, cns_grade, simulate_cns
 from drugos.organ.feedback import (
     OrganFeedback,
@@ -67,10 +70,12 @@ __all__ = [
     "LiverStress",
     "LiverTrajectory",
     "OrganFeedback",
+    "Apd90Result",
     "aki_grade",
     "apply_pk_scaling",
     "aten_floor_factor",
     "auc_nm_h",
+    "apd90_from_trace",
     "clo_01",
     "cns_grade",
     "combined_stress",
@@ -83,6 +88,7 @@ __all__ = [
     "liver_params_from_panel",
     "mitochondrial_block",
     "nephron_injury",
+    "ord_apd90",
     "organ_feedback",
     "predict_qtc",
     "redox_state",

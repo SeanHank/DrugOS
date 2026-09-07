@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import numpy as np
 import pytest
 
 import drugos.pipeline as pl
@@ -163,6 +164,19 @@ def test_no_pathway(fast_warfarin: RunSpec) -> None:
     assert contract["pathway"]["readout_peak"] == 0.0
 
 
+def test_production_sbml_pathway_runs(fast_warfarin: RunSpec) -> None:
+    result = run_pipeline(replace(fast_warfarin, include_pathway=True))
+    assert result.pathway is not None
+    assert result.pathway.model.readout == "PP_K"
+    # Full pump-rate occupancy (>= drug/Kd type signal) drives the cascade:
+    # the production readout peak must be finite and reported in the contract.
+    assert np.isfinite(result.pathway.concentrations["PP_K"]).all()
+    contract = result.to_contract()
+    assert contract["pathway"]["available"] is True
+    assert contract["pathway"]["readout"] == "PP_K"
+    assert contract["pathway"]["readout_peak"] > 0.0
+
+
 def test_empty_safety_panel(no_safety_panel: RunSpec) -> None:
     result = run_pipeline(no_safety_panel)
     assert result.primary_signal is None
@@ -228,6 +242,24 @@ def test_pipeline_cns_structural_line_gated_by_anchoring(fast_warfarin: RunSpec)
     assert cns is not None
     assert cns.risk == pytest.approx(0.20)  # unanchored -> class prior only
     assert not any(e.kind is EvidenceKind.STRUCTURAL for e in cns.evidence)
+
+
+def test_run_pipeline_cns_bbb_partition(fast_warfarin: RunSpec) -> None:
+    from drugos.pk.admet import AdmetOutput
+
+    penetrant = run_pipeline(
+        replace(fast_warfarin, admet=AdmetOutput(smiles="CC(=O)c1ccc(cc1)C(C(=O)O)", BBB=0.9))
+    )
+    restricted = run_pipeline(
+        replace(fast_warfarin, admet=AdmetOutput(smiles="CC(=O)c1ccc(cc1)C(C(=O)O)", BBB=0.1))
+    )
+    assert penetrant.exposure.cns_kpu_brain == 1.0
+    assert restricted.exposure.cns_kpu_brain == 0.2
+    peak_ratio = restricted.organ.cns.peak_brain_free_nm / penetrant.organ.cns.peak_brain_free_nm
+    assert peak_ratio == pytest.approx(0.2, rel=1e-9)
+    assert restricted.organ.cns.exposure_ratio == pytest.approx(
+        penetrant.organ.cns.exposure_ratio * 0.2, rel=1e-9
+    )
 
 
 def test_default_panel_herg_branch(default_panel_no_override: RunSpec) -> None:

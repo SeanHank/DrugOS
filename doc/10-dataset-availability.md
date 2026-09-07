@@ -51,9 +51,11 @@ never as hard truth; this is the defensible reading.
 
 Rodgers–Rowland tissue composition (11 tissues), Ye 2016 organ volumes/flows,
 Willmann-style scaling, the 16-site safety panel Kd/IC50 medians, organ
-IC50 priors (BSEP 90 µM, mito 300 µM, redox 600 µM, hERG 2 nM, neurotox 100 µM),
+IC50 priors (BSEP 300 µM IC50 / Ki 150 µM benign default, mito 300 µM,
+redox 600 µM, hERG 2 nM, neurotox 100 µM),
 CTCAE-type grade ladders, toxicity fusion priors/weights. All are hardcoded
-literals (see `doc/11`, rows "not downloaded").
+literals (see `doc/11`, rows "not downloaded"; the BSEP anchors are the
+vendored de Bruijn & Rietjens reference values, row 19b).
 
 **Science note.** These are *literature-class medians*: comparable in construct
 and unit to the corresponding assays/registries, but they carry class-typical
@@ -142,7 +144,12 @@ Priority ranking follows `doc/04 §3` (ingestion order). For each row:
 
 - **Need.** Replace static/algebraic organ ports: cardiac ion-channel Markov
   APD model (no state dynamics now), nephron tubule transport + creatinine
-  kinetic lag, liver bile-acid pool rather than a single Hill curve.
+  kinetic lag, liver DILI lifecycle beyond the current bile-acid + death axes.
+- **Partial today.** The liver cholestasis axis is already the **de Bruijn &
+  Rietjens 2024 bile-acid PBK** (R-7) and the kidney GFR baseline is the
+  **CKD-EPI 2021 race-free equation** (R-6) — both production-validated open
+  anchors (doc/12 rows 4b/4c); a full Physiome nephron/liver SBML integration
+  remains this P-item.
 - **Availability.** Physiome Model Repository (CC BY-SA, SBML, free). Size:
   individual models ~100 KB–10 MB SBML.
 - **Comparability.** The benchmark QTc standards here are *human ECG*

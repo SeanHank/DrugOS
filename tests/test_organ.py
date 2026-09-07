@@ -27,20 +27,26 @@ from drugos.organ.cardiac import (
 from drugos.organ.kidney import (
     KidneyParams,
     aki_grade,
+    ckdepi_2021_egfr,
     gfr_trajectory,
     nephron_injury,
     scr_from_gfr,
+    scr_mg_dl_to_umol_l,
     simulate_kidney,
 )
 from drugos.organ.liver import (
+    BileAcidParams,
     LiverParams,
     aten_floor_factor,
+    bile_acid_stress,
+    bsep_ki_from_ic50_nm,
     combined_stress,
     dili_grade,
     inhibition,
     liver_params_from_panel,
     mitochondrial_block,
     redox_state,
+    simulate_gcdca_pbk,
     simulate_liver,
 )
 from drugos.pk.partitions import partition_from_molecule
@@ -214,6 +220,105 @@ def test_liver_solve_failure_raises() -> None:
 
 
 # ---------------------------------------------------------------------------
+# liver: bile-acid PBK cholestasis anchor (R-7)
+# ---------------------------------------------------------------------------
+def test_bsep_ki_conversion() -> None:
+    assert bsep_ki_from_ic50_nm(100.0) == pytest.approx(0.05)
+    with pytest.raises(ValueError):
+        bsep_ki_from_ic50_nm(0.0)
+
+
+def test_bile_acid_stress_mapping() -> None:
+    assert bile_acid_stress(1.0) == 0.0
+    assert bile_acid_stress(0.5) == 0.0
+    # At the validated 1.5x risk threshold the stress reaches 0.5.
+    assert bile_acid_stress(1.5) == pytest.approx(0.5)
+    s = bile_acid_stress(3.0)
+    assert 0.0 < s < 1.0
+    assert s > 0.9
+    with pytest.raises(ValueError):
+        bile_acid_stress(1.0, risk_fold=1.0)
+
+
+def test_gcdca_pbk_no_drug_baseline() -> None:
+    t = np.linspace(0.0, 24.0, 121)
+    fold = simulate_gcdca_pbk(t, np.zeros_like(t), 45.0)
+    # No drug: the intrahepatic pool stays at its daily-cycling baseline, so
+    # the fold never exceeds unity (measured against the baseline peak).
+    assert float(fold.max()) == pytest.approx(1.0, abs=1e-3)
+    assert float(fold.min()) > 0.0
+
+
+def test_gcdca_pbk_strong_inhibitor_accumulates() -> None:
+    t = np.linspace(0.0, 24.0, 121)
+    c = 1.0 * np.ones_like(t)  # 1 uM free hepatic, Ki = 0.1 uM (ritonavir-class)
+    fold = simulate_gcdca_pbk(t, c, 0.1)
+    assert float(fold.max()) > 3.0
+    assert bile_acid_stress(float(fold.max())) > 0.9
+    # A weak inhibitor at low exposure stays near baseline.
+    weak = simulate_gcdca_pbk(t, 0.05 * np.ones_like(t), 45.0)
+    assert float(weak.max()) < 1.15
+
+
+def test_gcdca_pbk_rejects_bad_input() -> None:
+    with pytest.raises(ValueError):
+        simulate_gcdca_pbk(np.array([0.0, 1.0, 2.0]), np.array([1.0, 2.0]), 1.0)
+    with pytest.raises(ValueError):
+        simulate_gcdca_pbk(np.array([1.0]), np.array([2.0]), 1.0)
+    with pytest.raises(ValueError):
+        simulate_gcdca_pbk(np.array([0.0, 1.0]), np.array([0.0, 0.0]), 0.0)
+    with pytest.raises(ValueError):
+        simulate_gcdca_pbk(np.array([1.0, 0.0]), np.array([0.0, 0.0]), 1.0)
+
+
+def test_gcdca_pbk_solve_failure_raises() -> None:
+    with patch("drugos.organ.liver.solve_ivp") as mock:
+        mock.return_value = SimpleNamespace(success=False, message="bang")
+        with pytest.raises(RuntimeError, match="bang"):
+            simulate_gcdca_pbk(
+                np.array([0.0, 24.0]),
+                np.array([0.1, 0.1]),
+                45.0,
+                params=BileAcidParams(),
+            )
+
+
+def test_gcdca_pbk_baseline_collapse_raises() -> None:
+    with patch("drugos.organ.liver.solve_ivp") as mock:
+        # A converged baseline whose intrahepatic pool is identically zero
+        # must be rejected, not silently divided by.
+        mock.return_value = SimpleNamespace(success=True, y=np.zeros((12, 250)))
+        with pytest.raises(RuntimeError, match="non-positive baseline pool"):
+            simulate_gcdca_pbk(
+                np.array([0.0, 24.0]),
+                np.array([1.0, 1.0]),
+                45.0,
+                params=BileAcidParams(),
+            )
+
+
+def test_liver_death_solve_failure_raises() -> None:
+    import scipy.integrate
+
+    real = scipy.integrate.solve_ivp
+    calls: dict[str, int] = {"n": 0}
+
+    def fake(*args: object, **kwargs: object) -> object:
+        calls["n"] += 1
+        if calls["n"] <= 5:
+            return real(*args, **kwargs)
+        return SimpleNamespace(success=False, message="death-boom")
+
+    with patch("drugos.organ.liver.solve_ivp", side_effect=fake):
+        with pytest.raises(RuntimeError, match="death-boom"):
+            simulate_liver(
+                np.array([0.0, 24.0]),
+                np.array([0.1, 0.1]),
+                151.2,
+            )
+
+
+# ---------------------------------------------------------------------------
 # cardiac
 # ---------------------------------------------------------------------------
 def _physiology() -> object:
@@ -329,6 +434,37 @@ def test_nephron_injury_rejects_bad_constants() -> None:
         nephron_injury(1.0, 0.0, 2.0)
     with pytest.raises(ValueError):
         nephron_injury(1.0, 1.0, 0.0)
+
+
+def test_ckdepi_2021_reference_points() -> None:
+    # A 60-year-old with Scr = 1.0 mg/dL is grade CKD-2 territory (~ eGFR 85-90
+    # per 1.73 m2 under the 2021 race-free equation).
+    egfr_m = ckdepi_2021_egfr(1.0, 60, female=False)
+    assert egfr_m > 85.0
+    egfr_f = ckdepi_2021_egfr(1.0, 60, female=True)
+    assert egfr_f < egfr_m
+    # Same sex, higher Scr (1.5) => lower eGFR, but lower Scr (0.8) => higher.
+    egfr_high = ckdepi_2021_egfr(1.5, 60, female=False)
+    assert egfr_high < egfr_m
+    assert ckdepi_2021_egfr(0.8, 60, female=False) > egfr_m
+    # BSA scaling: > 1.73 m2 raises the absolute GFR, < 1.73 lowers it.
+    assert ckdepi_2021_egfr(1.0, 60, False, bsa_m2=2.0) > egfr_m
+    assert ckdepi_2021_egfr(1.0, 60, False, bsa_m2=1.5) < egfr_m
+
+
+def test_ckdepi_2021_rejects_bad_input() -> None:
+    with pytest.raises(ValueError):
+        ckdepi_2021_egfr(0.0, 60, False)
+    with pytest.raises(ValueError):
+        ckdepi_2021_egfr(1.0, 200, False)
+    with pytest.raises(ValueError):
+        ckdepi_2021_egfr(1.0, 60, False, bsa_m2=0.0)
+
+
+def test_scr_units_conversion() -> None:
+    assert scr_mg_dl_to_umol_l(1.0) == pytest.approx(88.4)
+    with pytest.raises(ValueError):
+        scr_mg_dl_to_umol_l(0.0)
 
 
 def test_gfr_trajectory_floor() -> None:

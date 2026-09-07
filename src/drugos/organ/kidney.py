@@ -4,15 +4,66 @@ doc/05 4.4 baseline.  A drug's free renal exposure drives nephron injury, which
 depresses GFR from the physiological baseline; serum creatinine is then the
 closed-form balance of production over clearance (Scr = P / GFR), and KDIGO
 criteria convert the Scr rise (or GFR fall) into an acute kidney injury grade.
+
+The **baseline** GFR is anchored to the production-validated, published
+CKD-EPI 2021 race-free creatinine equation (Levey et al., NEJM 2021) when a
+measured serum creatinine is available (doc/12 row 4b; R-6); otherwise the
+physiology default (age/sex part) is used.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
 
 from drugos.organ.base import NDArray, free_mg_l_to_nm
+
+_KAPPA = {"M": 0.9, "F": 0.7}
+_ALPHA = {"M": -0.302, "F": -0.241}
+_SCR_MGDL_TO_UMOL_L = 88.4
+
+
+def ckdepi_2021_egfr(
+    scr_mg_dl: float, age_y: float, female: bool, bsa_m2: float | None = None
+) -> float:
+    """eGFR by the CKD-EPI 2021 race-free creatinine equation (mL/min/1.73 m^2).
+
+    ``eGFR = 142 * min(Scr/k,1)^a * max(Scr/k,1)^-1.200 * 0.9938^Age``,
+    with the female multiplier and sex-specific ``k``/``a`` (Levey et al.,
+    N Engl J Med 2021;385:1737-49).  When ``bsa_m2`` is given the per-subject
+    absolute GFR (mL/min) is returned by scaling off 1.73 m^2; otherwise the
+    index value (per 1.73 m^2) is returned.
+    """
+    if scr_mg_dl <= 0:
+        raise ValueError("scr_mg_dl must be positive")
+    if not (0.0 <= age_y <= 130.0):
+        raise ValueError(f"age_y out of range: {age_y}")
+    key = "F" if female else "M"
+    kappa: float = _KAPPA[key]
+    alpha: float = _ALPHA[key]
+    scr_k: float = scr_mg_dl / kappa
+    egfr = (
+        142.0
+        * math.pow(min(scr_k, 1.0), alpha)
+        * math.pow(max(scr_k, 1.0), -1.200)
+        * math.pow(0.9938, age_y)
+    )
+    if female:
+        egfr *= 1.012
+    if bsa_m2 is not None:
+        if bsa_m2 <= 0:
+            raise ValueError("bsa_m2 must be positive")
+        egfr *= bsa_m2 / 1.73
+    return egfr
+
+
+def scr_mg_dl_to_umol_l(scr_mg_dl: float) -> float:
+    """Convert serum creatinine mg/dL to umol/L (standard clinical factor)."""
+    if scr_mg_dl <= 0:
+        raise ValueError("scr_mg_dl must be positive")
+    return scr_mg_dl * _SCR_MGDL_TO_UMOL_L
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,8 +184,10 @@ __all__ = [
     "KidneyParams",
     "KidneyResult",
     "aki_grade",
+    "ckdepi_2021_egfr",
     "gfr_trajectory",
     "nephron_injury",
     "scr_from_gfr",
+    "scr_mg_dl_to_umol_l",
     "simulate_kidney",
 ]

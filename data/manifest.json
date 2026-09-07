@@ -1,5 +1,5 @@
 {
-  "version": "2026.9.1",
+  "version": "2026.9.2",
   "about": "Data manifest for the DrugOS repository. Every vendored file under data/ is pinned by sha256; scripts/release.py gates verifies each checksum and fails the release on any mismatch (tampering, silent edits, or accidental drift). Sources that are distributed as packages (ADMET-AI, RDKit, terbapy-style model weights) or are license-restricted bulk downloads are documented in data/README.md and fetched via package managers; they are never vendored here.",
   "files": [
     {
@@ -25,6 +25,38 @@
       "license": "Harvard Dataverse public dataset (CC0 public-domain release by authors).",
       "status": "vendored",
       "retrieved_utc": "2026-09-06T10:40:00Z"
+    },
+    {
+      "path": "models/ohara-2011.mmt",
+      "sha256": "0ba58e14b76714741b3125d638eb03806c1be48eadb56c578cc821c141344c27",
+      "source": "O'Hara-Rudy 2011 human ventricular action-potential model (PLoS Comput Biol e1002061), Myokit .mmt encoding vendored from github.com/myokit/models (c/ohara-2011.mmt); BSD 3-Clause (Myokit). Validation case R-3 drives this model via the drugos.organ.cardiac_ap lane.",
+      "license": "BSD 3-Clause (Myokit); model equations from the CC-BY open-access PLoS publication.",
+      "status": "vendored",
+      "retrieved_utc": "2026-09-06T20:25:00Z"
+    },
+    {
+      "path": "models/ohara-cipa-v1-2017.mmt",
+      "sha256": "bac881a5c40f72af18bba07fc303b44134642bbcad84e6e8fa7395920e1de410",
+      "source": "ORd-CiPA-v1 (2017) retune (Dutta, Chang, et al., Front Physiol 2017; official CiPA in-silico model), Myokit .mmt encoding vendored from github.com/myokit/models (c/ohara-cipa-v1-2017.mmt). Reserved for the multi-ionic-block upgrade path (doc/12).",
+      "license": "BSD 3-Clause (Myokit); equations from the CC-BY open-access Frontiers publication.",
+      "status": "vendored",
+      "retrieved_utc": "2026-09-06T20:25:00Z"
+    },
+    {
+      "path": "models/huang1996-mapk-cascade.xml",
+      "sha256": "1f95d793517d47dbf98321a89cdb14fcff9f461427b4ea062d398734c962ab98",
+      "source": "Huang & Ferrell 1996 ultrasensitive MAPK cascade in SBML L2V4 (BioModels BIOMD0000000009, CC0), vendored for the Stage-3 pathway lane (doc/12 row 3). Parsed by python-libsbml via drugos.pathway.sbml_pathway; the pipeline default signal lane drives this model (readout PP_K = doubly-phosphorylated ERK).",
+      "license": "CC0 (BioModels BIOMD0000000009).",
+      "status": "vendored",
+      "retrieved_utc": "2026-09-06T07:30:00Z"
+    },
+    {
+      "path": "models/bsep_shh_ic50_reference.json",
+      "sha256": "26639e08bd979b9055ac63631a2c130610f21cb4bfcf46a2ca41cc660c52d65b",
+      "source": "Representative BSEP (ABCB11) efflux-inhibition IC50 anchors (SHH assay, uM) driving the R-7 cholestasis case and the organ cholestasis lane: transcribed from the open-access de Bruijn & Rietjens 2024 paper (Arch. Toxicol. 98:3077-3095, doi:10.1007/s00204-024-03775-6, CC BY 4.0); underlying measurements in the primary BSEP literature (Morgan 2010; Marchant 2019). Note: the companion model repository (github.com/Veronique-de-Bruijn/PBK-model-cholestasis) is licensed CC-BY-NC-ND and its code is intentionally NOT vendored or ported; only the paper's open-access equations and these published numeric anchors are used.",
+      "license": "CC BY 4.0 (paper); small transcribed numeric table, no code. Data file created for this repository.",
+      "status": "vendored",
+      "retrieved_utc": "2026-09-07T00:00:00Z"
     }
   ]
 }

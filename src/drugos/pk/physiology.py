@@ -239,7 +239,23 @@ def _resolve_proteins(profile: HumanProfile) -> dict[str, float]:
 
 def _resolve_gfr(profile: HumanProfile) -> float:
     base = _age_adjust_defaults(profile.age_y, profile.sex)
-    gfr = profile.gfr_ml_min if profile.gfr_ml_min is not None else base["gfr_ml_min"]
+    if profile.gfr_ml_min is not None:
+        gfr = profile.gfr_ml_min
+    elif profile.serum_creatinine_mg_dl is not None:
+        # Production-validated baseline: CKD-EPI 2021 race-free eGFR from a
+        # measured serum creatinine (doc/12 row 4b, R-6), scaled to the
+        # per-subject absolute GFR by Mosteller BSA.
+        from drugos.organ.kidney import ckdepi_2021_egfr
+
+        bsa = mosteller_bsa(profile.height_cm, profile.weight_kg)
+        gfr = ckdepi_2021_egfr(
+            profile.serum_creatinine_mg_dl,
+            profile.age_y,
+            profile.sex is Sex.FEMALE,
+            bsa_m2=bsa,
+        )
+    else:
+        gfr = base["gfr_ml_min"]
     if profile.mild_renal_impairment:
         gfr *= 0.60
     if profile.moderate_renal_impairment:

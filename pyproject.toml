@@ -34,6 +34,8 @@ dependencies = [
     "torch>=2.8",
     "flask>=3.0",
     "rpy2>=3.6",
+    "myokit>=1.39",
+    "python-libsbml>=5.20",
 ]
 
 [project.scripts]

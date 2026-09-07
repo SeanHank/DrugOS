@@ -1,0 +1,29 @@
+"""Minimal typing surface for the subset of myokit consumed by DrugOS.
+
+The upstream distribution ships no type annotations; documented in
+doc/06-technology-stack.md per the release quality gate (G2).
+"""
+
+from typing import Any
+
+
+class Variable:
+    def value(self) -> float: ...
+
+
+class Model:
+    def get(self, name: str) -> Variable: ...
+
+
+class Protocol: ...
+
+
+def load(path: str) -> tuple[Model, Protocol, str]: ...
+
+
+class Simulation:
+    def __init__(self, model: Model, protocol: Protocol) -> None: ...
+    def set_constant(self, name: str, value: float) -> None: ...
+    def get(self, name: str) -> float: ...
+    def pre(self, duration: float) -> None: ...
+    def run(self, duration: float, log: list[str], log_interval: float) -> dict[str, Any]: ...

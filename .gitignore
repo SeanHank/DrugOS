@@ -18,9 +18,9 @@ venv/
 .coverage
 htmlcov/
 
-# Data caches
-data/*/
-!data/manifest.yaml
+# CLI analysis outputs (drugos run --out, drugos study --out)
+reports/
+studies/
 
 # OS/editor
 .DS_Store

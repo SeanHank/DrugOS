@@ -6,9 +6,10 @@ Everything under `data/` is pinned by sha256 in `data/manifest.json`, and
 
 ## Vendored now
 
-| File | Content | Consumers | Checksum source |
-|---|---|---|---|
-| `benchmarks/published_pk.json` | Original experimental/PK pass-bands (CL, t½, Fa, fe, Vss) for the 5-benchmark compound corpus (midazolam, acetaminophen, warfarin, ciprofloxacin, dofetilide) | `validation/benchmarks/base.py` (`load_published`/`load_cites`/`load_about`) → every benchmark compound module | `data/manifest.json` |
+| Table | File | Content | Consumers | Checksum source |
+|---|---|---|---|---|
+| `pk` | `benchmarks/published_pk.json` | Original experimental/PK pass-bands (CL, t½, Fa, fe, Vss) for the 5-benchmark compound corpus (midazolam, acetaminophen, warfarin, ciprofloxacin, dofetilide) | `validation/benchmarks/base.py` (`load_published`/`load_cites`/`load_about`) → every benchmark compound module | `data/manifest.json` |
+| organ | `models/bsep_shh_ic50_reference.json` | Representative BSEP (ABCB11) SHH efflux-inhibition IC50 anchors (µM) transcribed from the open-access de Bruijn & Rietjens 2024 paper (CC BY 4.0), used to pin the liver cholestasis anchor (R-7, `simulate_gcdca_pbk`) | `validation/cases/case_liver_cholestasis_pbk.py` (R-7) and the organ cholestasis lane | `data/manifest.json` |
 
 The bands are the published measured ranges used as validation pass criteria;
 they are loaded from this file (never inlined), so the reference and the code
