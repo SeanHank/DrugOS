@@ -2,4 +2,5 @@ pytest>=8.0
 pytest-cov>=4.1
 ruff>=0.4
 mypy>=1.9
+scipy-stubs>=1.18
 jupyterlab>=4.0

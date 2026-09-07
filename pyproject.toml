@@ -48,6 +48,7 @@ dev = [
     "pytest-xdist>=3.5",
     "ruff>=0.4",
     "mypy>=1.9",
+    "scipy-stubs>=1.18",
     "jupyterlab>=4.0",
     "build>=1.0",
     "twine>=5.0",
