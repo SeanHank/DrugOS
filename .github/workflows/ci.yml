@@ -24,6 +24,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install R runtime (required-R bridge)
+        # The R bridge is a hard dependency (doc/06): rpy2-rinterface compiles
+        # against R headers (API mode needs `R` in PATH), and the R-1 gate runs
+        # the literature-PK estimator in R during G4.  Ubuntu's r-base is R>=4.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends r-base r-base-dev
       - name: Install package + dev deps
         run: |
           python -m pip install --upgrade pip
