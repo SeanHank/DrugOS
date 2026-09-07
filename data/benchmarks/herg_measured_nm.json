@@ -1,0 +1,119 @@
+{
+  "about": "Measured hERG (Kv11.1) IC50 for the five-benchmark corpus from the public ChEMBL record (target CHEMBL240). Geometric mean of experimental (binding/functional) IC50 rows per compound. Compounds without any hERG IC50 row are omitted: absence is recorded, not guessed.",
+  "retrieved_utc": "2026-09-06T11:53:57+00:00",
+  "compounds": {
+    "dofetilide": {
+      "chembl_id": "CHEMBL473",
+      "ic50_geomean_nm": 26.4043,
+      "n_rows_in_central_estimate": 11,
+      "rows": [
+        {
+          "standard_value": 15.0,
+          "units": "nM",
+          "pchembl_value": 7.82,
+          "assay_type": "F",
+          "document_chembl_id": "CHEMBL1135758"
+        },
+        {
+          "standard_value": 10.0,
+          "units": "nM",
+          "pchembl_value": 8.0,
+          "assay_type": "B",
+          "document_chembl_id": "CHEMBL1136402"
+        },
+        {
+          "standard_value": 44000.0,
+          "units": "nM",
+          "pchembl_value": 4.36,
+          "assay_type": "F",
+          "document_chembl_id": "CHEMBL1128716"
+        },
+        {
+          "standard_value": 30.0,
+          "units": "nM",
+          "pchembl_value": 7.52,
+          "assay_type": "B",
+          "document_chembl_id": "CHEMBL1137856"
+        },
+        {
+          "standard_value": 9.2,
+          "units": "nM",
+          "pchembl_value": 8.04,
+          "assay_type": "B",
+          "document_chembl_id": "CHEMBL1145378"
+        },
+        {
+          "standard_value": 4.1,
+          "units": "nM",
+          "pchembl_value": 8.39,
+          "assay_type": "B",
+          "document_chembl_id": "CHEMBL2321724"
+        },
+        {
+          "standard_value": 5.0,
+          "units": "nM",
+          "pchembl_value": 8.3,
+          "assay_type": "F",
+          "document_chembl_id": "CHEMBL3430321"
+        },
+        {
+          "standard_value": 200.0,
+          "units": "nM",
+          "pchembl_value": 6.7,
+          "assay_type": "B",
+          "document_chembl_id": "CHEMBL3856276"
+        },
+        {
+          "standard_value": 15.0,
+          "units": "nM",
+          "pchembl_value": 7.82,
+          "assay_type": "B",
+          "document_chembl_id": "CHEMBL4610112"
+        },
+        {
+          "standard_value": 1460.0,
+          "units": "nM",
+          "pchembl_value": 5.84,
+          "assay_type": "B",
+          "document_chembl_id": "CHEMBL4765335"
+        },
+        {
+          "standard_value": 13.0,
+          "units": "nM",
+          "pchembl_value": 7.89,
+          "assay_type": "B",
+          "document_chembl_id": "CHEMBL4765447"
+        },
+        {
+          "standard_value": 90.0,
+          "units": "nM",
+          "pchembl_value": 7.05,
+          "assay_type": "B",
+          "document_chembl_id": "CHEMBL5726069"
+        }
+      ]
+    }
+  },
+  "compounds_presence": {
+    "dofetilide": {
+      "chembl_id": "CHEMBL473",
+      "n_measured_rows": 12
+    },
+    "warfarin": {
+      "chembl_id": "CHEMBL1464",
+      "n_measured_rows": 0
+    },
+    "midazolam": {
+      "chembl_id": "CHEMBL655",
+      "n_measured_rows": 0
+    },
+    "acetaminophen": {
+      "chembl_id": "CHEMBL112",
+      "n_measured_rows": 0
+    },
+    "ciprofloxacin": {
+      "chembl_id": "CHEMBL8",
+      "n_measured_rows": 0
+    }
+  }
+}

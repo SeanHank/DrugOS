@@ -1,0 +1,50 @@
+{
+  "about": "Vendored original experimental/pharmacokinetic reference corpus for the DrugOS validation benchmark suite (validation/benchmarks). These are the published measured PK parameter bands the pipeline is checked against; they are the single source of truth for those pass bands and are loaded by validation/benchmarks/base.py (never duplicated inline in compound modules). Each entry cites its primary sources in validation/benchmarks/citations.py.",
+  "compounds": {
+    "midazolam": {
+      "about": "Hepatic CYP3A4-extracted benzodiazepine; clearance axis validated.",
+      "cites": ["midazolam", "partition"],
+      "published": {
+        "cl_plasma_l_h": [18.0, 36.0]
+      }
+    },
+    "acetaminophen": {
+      "about": "Low-binding analgesic; oral ACAT-lite absorption; metabolic clearance (hepatic 95%).",
+      "cites": ["acetaminophen", "partition"],
+      "published": {
+        "cl_plasma_l_h": [15.0, 27.0],
+        "t_half_h": [1.5, 3.5],
+        "f_abs": [0.80, 0.98]
+      }
+    },
+    "warfarin": {
+      "about": "High-protein-binding narrow-TI anticoagulant; low Vss.",
+      "cites": ["warfarin", "partition"],
+      "published": {
+        "cl_plasma_l_h": [0.10, 0.30],
+        "vss_l": [4.0, 16.0],
+        "t_half_h": [30.0, 45.0]
+      }
+    },
+    "ciprofloxacin": {
+      "about": "Renal-elimination fluoroquinolone (~68% renal), zwitterion.",
+      "cites": ["ciprofloxacin", "partition"],
+      "published": {
+        "cl_plasma_l_h": [15.0, 27.0],
+        "t_half_h": [3.0, 6.0],
+        "f_abs": [0.60, 0.95],
+        "urine_fraction": [0.40, 0.70]
+      }
+    },
+    "dofetilide": {
+      "about": "hERG-active Class III anti-arrhythmic; ~80% renal elimination.",
+      "cites": ["dofetilide", "partition"],
+      "published": {
+        "cl_plasma_l_h": [12.0, 20.0],
+        "t_half_h": [7.0, 9.0],
+        "f_abs": [0.80, 1.0],
+        "urine_fraction": [0.60, 0.85]
+      }
+    }
+  }
+}

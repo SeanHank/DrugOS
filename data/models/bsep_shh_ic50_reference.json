@@ -1,0 +1,27 @@
+{
+  "about": "Representative BSEP (ABCB11) efflux-inhibition IC50 anchors (SHH assay, micromolar) used by the R-7 cholestasis validation case (validation/cases/case_liver_cholestasis_pbk.py) and the organ cholestasis lane (src/drugos/organ/liver.py). Transcribed from the open-access publication of de Bruijn & Rietjens, Arch. Toxicol. 98:3077-3095 (2024), doi:10.1007/s00204-024-03775-6 (CC BY 4.0), which validated the GCDCA bile-acid PBK against the clinical cholestasis signal of ~18 marketed drugs; underlying IC50 measurements originate in the primary BSEP inhibition literature (Morgan 2010; Marchant 2019).",
+  "units": "IC50 micromolar (SHH vesicular efflux assay)",
+  "classification": "compounds with SHH IC50 below ~5 uM are classified as BSEP inhibitors (cholestasis-sensitive) in the validated ranking",
+  "anchors": {
+    "ritonavir": {
+      "bsep_shh_ic50_umol_l": 0.2,
+      "class": "cholestatic"
+    },
+    "saquinavir": {
+      "bsep_shh_ic50_umol_l": 0.4,
+      "class": "cholestatic"
+    },
+    "atorvastatin": {
+      "bsep_shh_ic50_umol_l": 2.6,
+      "class": "cholestatic"
+    },
+    "ketoconazole": {
+      "bsep_shh_ic50_umol_l": 3.0,
+      "class": "cholestatic-boundary"
+    },
+    "itraconazole": {
+      "bsep_shh_ic50_umol_l": 10000.0,
+      "class": "benign"
+    }
+  }
+}
