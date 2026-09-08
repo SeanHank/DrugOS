@@ -1,7 +1,7 @@
 # DrugOS Validation Report
 
-- Status: **PASS** (25/25 cases passed)
-- Generated: 2026-09-07 05:02 UTC
+- Status: **PASS** (27/27 cases passed)
+- Generated: 2026-09-08 09:49 UTC
 - DrugOS version: 2026.9.0
 - Interpreter: /opt/anaconda3/envs/drug_os/bin/python
 - Fold-error allowance: within 2x of the published band centre (doc/08 Tier 2, GMFE <= 2); Fa bands additionally clamp to 1.
@@ -53,27 +53,27 @@
 |  |  | model_prior_to_measured_ratio | 0.07575 [0.05, 20] fold | pass |
 |  |  | herg_corpus_median_pct_inh_at_1uM | 8.254 [0, 30] % inhibition | pass |
 |  |  | herg_corpus_p99_9_pct_inh_at_1uM | 31.64 [25, 100] % inhibition | pass |
-| Stage-5 composite risk ordering vs clinical anchors | L3 | dofetilide_qt_risk | 0.5259 [0.45, 0.95] P(risk) | pass |
+| Stage-5 composite risk ordering vs clinical anchors | L3 | dofetilide_qt_risk | 0.5288 [0.45, 0.95] P(risk) | pass |
 |  |  | warfarin_qt_risk | 0.0053 [0, 0.35] P(risk) | pass |
-|  |  | acetaminophen_20g_dili_risk | 0.97 [0.6, 1] P(risk) | pass |
-|  |  | acetaminophen_1g_dili_risk | 0.1177 [0, 0.4] P(risk) | pass |
+|  |  | acetaminophen_20g_dili_risk | 0.9703 [0.6, 1] P(risk) | pass |
+|  |  | acetaminophen_1g_dili_risk | 0.1185 [0, 0.4] P(risk) | pass |
 |  |  | unanchored_cns_prior | 0.2 [0.2, 0.2] P(risk) | pass |
 |  |  | held_out_dose_profile_stable | 0 [0, 0] disagreements | pass |
 | Phase-6 robustness engines: D21-D24 self-consistency | L1 | ensemble_reproducible_max_band_diff | 0 [0, 0] au | pass |
 |  |  | band_monotonic_violations | 0 [0, 0] points | pass |
-|  |  | population_min_risk_nonneg | 0.1132 [0, 0] P(risk) | pass |
+|  |  | population_min_risk_nonneg | 0.114 [0, 0] P(risk) | pass |
 |  |  | sobol_first_total_in_range | 0 [0, 0] flags | pass |
-|  |  | dili_ic50_sensitivity_sign | -0.4624 [-1, 0] dlnR/dlnIC50 | pass |
+|  |  | dili_ic50_sensitivity_sign | -0.462 [-1, 0] dlnR/dlnIC50 | pass |
 | SC/IM depot analytic (Bateman single pool) | L2 | cmax_mg_l | 0.123 [0.1171, 0.1294] mg/L | pass |
 |  |  | tmax_h | 12 [11.34, 13.86] h | pass |
 |  |  | auc_inf_mgh_l | 18.1 [17.1, 18.9] mg.h/L | pass |
 |  |  | unabsorbed_feces_mg | 1 [0.9, 1.1] mg | pass |
 | D24 prospective rerun fidelity (dofetilide QTc) | L1 | test_retest_max_risk_diff | 0 [0, 0] P(risk) | pass |
-|  |  | held_out_subject_qt_risk | 0.8345 [0.7, 0.99] P(risk) | pass |
+|  |  | held_out_subject_qt_risk | 0.8361 [0.7, 0.99] P(risk) | pass |
 |  |  | held_out_verdict_disagreements | 0 [0, 0] count | pass |
-| R literature-PK cross-check (R-1) | L3 | r_literature_cl_agreement_max | 1.931e-15 [0, 0.02] fraction | pass |
+| R literature-PK cross-check (R-1) | L3 | r_literature_cl_agreement_max | 1.044e-15 [0, 0.02] fraction | pass |
 |  |  | r_verdicts_not_agree | 0 [0, 0] count | pass |
-|  |  | r_two_comp_fits | 0 [0, 5] count | pass |
+|  |  | r_two_comp_fits | 1 [0, 5] count | pass |
 | cardiac AP cross-check (ORd/IKr) | L3 | ord_apd90_base_ms | 266.3 [200, 350] ms | pass |
 |  |  | dofetilide_at_ic50_delta_apd90_ms | 114.8 [30, 1000] ms | pass |
 |  |  | apd90_monotone_25_to_50_ms | 67.7 [0, 1000] ms | pass |
@@ -101,6 +101,22 @@
 |  |  | ranking_ki_monotone | 9.321 [9.321, 9.321] fold delta | pass |
 |  |  | ki_conversion_ic50_over_2 | 0.1 [0.1, 0.1] umol/L | pass |
 |  |  | organ_wiring_chol_consistency | 0.9975 [0.9475, 1.048] 0..1 | pass |
+| pathway->organ regeneration coupling + bilirubin ceiling | L2 | suppressed_regen_death_fold | 1.02 [1.001, 1000] fold | pass |
+|  |  | stimulated_regen_death_fold | 0.982 [1e-06, 0.999] fold | pass |
+|  |  | suppression_to_stimulation_fold | 1.039 [1.01, 1000] fold | pass |
+|  |  | neutral_signal_dead_absdiff | 0 [0, 1e-06] fraction | pass |
+|  |  | regen_scale_floor | 0.5 [0.499, 0.501] scale | pass |
+|  |  | regen_scale_ceiling | 1.5 [1.499, 1.501] scale | pass |
+|  |  | bilirubin_capped_xULN | 2 [1.999, 2.001] xULN | pass |
+|  |  | bilirubin_uncapped_rise_xULN | 3 [2.01, 3] xULN | pass |
+| bioavailability F reporting (IV/depot/oral first-pass) | L1 | iv_bioavailability | 1 [0.9999, 1] fraction | pass |
+|  |  | oral_bioavailability_range | 0.856 [0, 1] fraction | pass |
+|  |  | first_pass_splits_iv | 0.144 [1e-06, 1] fraction | pass |
+|  |  | depot_bioavailability | 0.7 [0.6999, 0.7001] fraction | pass |
+|  |  | auc_ratio_matches_reported_F | 0.8607 [0.8389, 0.8732] fraction | pass |
+|  |  | metrics_f_abs_reported | 0.856 [0.856, 0.856] fraction | pass |
+|  |  | permeability_gated_cmax_ordering | 0.01927 [1e-06, 1e+06] mg/L | pass |
+|  |  | permeability_gated_feces_ordering | 1.217 [-1e+06, -1e-06] mg | pass |
 
 ## Evidence levels
 
@@ -115,8 +131,8 @@ Results are graded by how much epistemic weight they carry (doc/08 §1.1-1.4 tie
 Per-level status:
 
 - **L3** (Empirically anchored (Tier 1)): 10/10 cases green.
-- **L2** (Analytic / mechanistic limit (Tier 2)): 11/11 cases green.
-- **L1** (Internal consistency / CI (Tier 3)): 4/4 cases green.
+- **L2** (Analytic / mechanistic limit (Tier 2)): 12/12 cases green.
+- **L1** (Internal consistency / CI (Tier 3)): 5/5 cases green.
 
 ## Notes & limitations
 
@@ -135,16 +151,18 @@ Per-level status:
 - **kidney GFR/AKI escalation (KDIGO)**: closed-form Scr=P/GFR exact at zero exposure; 1.0 mg/L free kidney exposure -> Scr ratio 4.54 (KDIGO stage 3) vs 1.001 (stage 0); GFR floor 26 mL/min.  KDIGO criteria: Scr x2 -> stage 2, x3 -> stage 3 (or GFR drop).
 - **Stage-5 clinical grading: analytic point-matches**: Exposure ROC line reproduces the closed form sigmoid(1.2*(0.0 - (-1.3))) = 0.8264; empty-evidence fusion returns the DILI prior 0.25 exactly; grade ladder and crossing windows match the CTCAE conventions of doc/05 5.1-5.2.
 - **Corpus calibration cross-check (R-2)**: dofetilide ChEMBL hERG IC50 geomean 26.4 nM (core rows, outlier >=10 uM excluded; regen by scripts/data/fetch_chembl_herg.py); model class prior 2.0 nM = 0.1x of measured (conservative direction, within the 20x envelope). hERG Central corpus: 306893 PMID-anchored rows; median %inhibition at 1 uM = 8.3, P99.9 = 31.6 (blockade is the exception, so a per-compound hERG override is the honest modelling choice).
-- **Stage-5 composite risk ordering vs clinical anchors**: dofetilide QT 0.526 (qt-driven) > warfarin QT 0.005; APAP 20 g DILI 0.970 > 1 g DILI 0.118 (dili-driven); unanchored CNS sits on the 0.20 class prior.  Published anchors: dofetilide (Tikosyn) is a QT-prolonging hERG blocker and is contraindicated with renal/QT risk; massive acetaminophen overdose causes centrilobular hepatic necrosis (DILI), while warfarin is not a QT liability.
-- **Phase-6 robustness engines: D21-D24 self-consistency**: Fixed-seed D21 ensemble reproduces itself exactly (max median-band diff 0); 90% band monotone with 0 violations; D22 cohort incidence non-negative; D23 first/total indices inside [-1,1]/[0,1]; DILI risk strictly decreases with a rising IC50 (-0.4624 per +10% IC50).
+- **Stage-5 composite risk ordering vs clinical anchors**: dofetilide QT 0.529 (qt-driven) > warfarin QT 0.005; APAP 20 g DILI 0.970 > 1 g DILI 0.118 (dili-driven); unanchored CNS sits on the 0.20 class prior.  Published anchors: dofetilide (Tikosyn) is a QT-prolonging hERG blocker and is contraindicated with renal/QT risk; massive acetaminophen overdose causes centrilobular hepatic necrosis (DILI), while warfarin is not a QT liability.
+- **Phase-6 robustness engines: D21-D24 self-consistency**: Fixed-seed D21 ensemble reproduces itself exactly (max median-band diff 0); 90% band monotone with 0 violations; D22 cohort incidence non-negative; D23 first/total indices inside [-1,1]/[0,1]; DILI risk strictly decreases with a rising IC50 (-0.4620 per +10% IC50).
 - **SC/IM depot analytic (Bateman single pool)**: V=66.4 L, ka=0.3/h, F=0.9; analytic Cmax=0.123 mg/L, Tmax=12.6 h, AUC=18.0 mg.h/L
-- **D24 prospective rerun fidelity (dofetilide QTc)**: Repeated identical runs agree to 0.0e+00 in risk and keep verdict 'High composite risk (53%, driver qt)'; an independent female-70 profile also sustains the high-QT regime (dofetilide QT 0.835, driver qt).  Basis: reproducibility is the precondition of the runbook; the QTc band itself is anchored by the L3 dofetilide Tier-1 case (see case_cardiac_qtc).
-- **R literature-PK cross-check (R-1)**: worst |CL_r - CL_py|/CL_py over midazolam / acetaminophen / warfarin / ciprofloxacin / dofetilide: 1.93e-15 (acetaminophen); midazolam=r:agree / acetaminophen=r:agree / warfarin=r:agree / ciprofloxacin=r:agree / dofetilide=r:agree; method-of-residuals two-comp fits: 0/5
+- **D24 prospective rerun fidelity (dofetilide QTc)**: Repeated identical runs agree to 0.0e+00 in risk and keep verdict 'High composite risk (53%, driver qt)'; an independent female-70 profile also sustains the high-QT regime (dofetilide QT 0.836, driver qt).  Basis: reproducibility is the precondition of the runbook; the QTc band itself is anchored by the L3 dofetilide Tier-1 case (see case_cardiac_qtc).
+- **R literature-PK cross-check (R-1)**: worst |CL_r - CL_py|/CL_py over midazolam / acetaminophen / warfarin / ciprofloxacin / dofetilide: 1.04e-15 (acetaminophen); midazolam=r:agree / acetaminophen=r:agree / warfarin=r:agree / ciprofloxacin=r:agree / dofetilide=r:agree; method-of-residuals two-comp fits: 1/5
 - **cardiac AP cross-check (ORd/IKr)**: ORd 2011 (myokit, endo, 50 pre-paces @1 Hz): baseline APD90=266.3 ms; delta-APD90 @25% block=47.1 ms, @50% block (measured-IC50 concentration)=114.8 ms, control (0% block)=0.0000 ms; monotone +67.7 ms between block levels; warfarin control confirmed zero prolongation (matches encoder ordering warfarin 0.017 ms << dofetilide 20.2 ms)
 - **ADMET-AI BBB_Martins -> CNS partition (R-4)**: BBB_Martins P=0.9 -> kpu_brain 1.00, P=0.1 -> 0.20 (source: ADMET-AI BBB_Martins head); restricted brain peak = 20% of penetrant; CNS grades 0 <= 0; baseline (no ADMET-AI) kpu=1.00 untouched — benchmark anchors unchanged
 - **Huang/Levchenko SBML MAPK cascade integration (R-5)**: parsed 22 species / 20 reactions from BIOMD0000000009 (volume 4.0e-12 L); drug-free PP_K steady state 0.982; occupancy monotone 0.6->0.917, 0.9->0.005, 1.0->0.000; full-signal fold-change 0.000 (inhibition).
 - **CKD-EPI 2021 race-free GFR baseline (R-6)**: CKD-EPI 2021 race-free: male 60 y SCR 1.0 -> 86.2 mL/min/1.73 m2 (CKD-2 band); female same Scr 64.5; BSA-scaled 98.2 mL/min; Scr-carrying profile gfr=98.2 mL/min; no-Scr default untouched (125.0 mL/min).
 - **Bile-acid cholestasis PBK (R-7)**: de Bruijn & Rietjens (2024) bile-acid PBK reproduced at 1 uM free-hepatic exposure: ritonavir-class (IC50 0.2 uM) fold 10.32x / stress 1.00 (cholestatic), itraconazole-class (IC50 10 mM) fold 1.00x (benign); Ki=IC50/2 pinned; organ cholestasis 1.00 matches the submodel.
+- **pathway->organ regeneration coupling + bilirubin ceiling**: at 0.1966 suppressed vs 0.1927 baseline vs 0.1892 stimulated max dead fraction with regen_scale clamped to [0.50, 1.50]; bilirubin capped at 2.00xULN while uncapped hits 3.00xULN. The blocked ERK/proliferation readout attenuates (never ablates) hepatocyte regeneration, tipping the same direct stress into more cell death (occupancy -> pathway -> organ -> phenotype).
+- **bioavailability F reporting (IV/depot/oral first-pass)**: I F=1.000, depot F=0.700, oral F=0.8560; oral/IV AUC ratio=0.8607 while CL=0.5 L/h. The unabsorbed colon-transit fraction leaves the oral body and first-pass hepatic extraction is inside the reported F. Permeability-gated absorption: fa 0.95 peaks above fa 0.3 with the low-fa molecules losing more to the colon/feces sink.
 
 ## Tier-1 geometric-mean fold error (L3 asserted metrics)
 
@@ -158,10 +176,10 @@ Per-level status:
 
 ## Tier coverage (doc/08)
 
-- Stage 1 (PK): benchmark compounds + analytic limit + mass budget + dose-proportionality — **green**.
+- Stage 1 (PK): benchmark compounds + analytic limit + mass budget + dose-proportionality + route-dependent bioavailability F reporting (IV/depot/oral first-pass) + permeability/Fa-gated and logS-gated solubility-limited oral absorption — **green**.
 - Stage 2 (occupancy): target-turnover equilibrium ODE vs analytic D/(D+Kd) point-wise match — **green**.
 - Stage 3 (pathway): 3-tier MAPK amplifier — steady-state EC50 below the receptor-Kd-equivalent signal (Emax/Hill fit, EC50<0.5) and >2x baseline amplification — **green**.
-- Stage 4 (organ): liver DILI dose-response (ALT/bilirubin/Hy's Law at overdose), cardiac QTc prolongation vs the published dofetilide Delta-QTc band, and kidney GFR/AKI KDIGO escalation — **green**.
+- Stage 4 (organ): liver DILI dose-response (ALT/bilirubin/Hy's Law at overdose), pathway->organ regeneration coupling + bilirubin ceiling, cardiac QTc prolongation vs the published dofetilide Delta-QTc band + ERK-amplification inotropy/chronotropy tone coupling, and kidney GFR/AKI KDIGO escalation with a graded urinary KIM-1 row — **green**.
 - Stage 5 clinical / report / CLI tiers: scheduled with their stage modules (see roadmap); each new model feature must add a validation case before merge (G4 rule).
 
 ## Citations

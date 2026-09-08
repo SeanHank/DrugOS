@@ -17,6 +17,7 @@ from drugos.pk.physiology import (
 from drugos.pk.simulate import (
     PBPKResult,
     PkMetrics,
+    bioavailable_fraction,
     compute_pk_metrics,
     simulate_pbpk,
 )
@@ -38,6 +39,7 @@ __all__ = [
     "mosteller_bsa",
     "PBPKResult",
     "PkMetrics",
+    "bioavailable_fraction",
     "compute_pk_metrics",
     "simulate_pbpk",
 ]

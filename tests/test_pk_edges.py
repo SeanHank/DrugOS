@@ -15,7 +15,11 @@ from drugos.pk.partitions import (
     rodgers_rowland_partition,
 )
 from drugos.pk.pbpk_build import AbsorptionParams, PBPKModel, absorption_rate_from_fa
-from drugos.pk.simulate import compute_pk_metrics, simulate_pbpk
+from drugos.pk.simulate import (
+    bioavailable_fraction,
+    compute_pk_metrics,
+    simulate_pbpk,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -192,6 +196,82 @@ def test_simulate_rejects_nonpositive_tmax() -> None:
 
 
 # ---------------------------------------------------------------------------
+# bioavailability F (doc/05 2.1): route-dependent reporting, first-pass
+# ---------------------------------------------------------------------------
+def _model_with_abs(
+    route: Route, amount_mg: float, cl_hep_l_h: float, **abs_kwargs: object
+) -> PBPKModel:
+    profile = resolve_human(HumanProfile(sex=Sex.MALE))
+    mol = Molecule(name="t", log_p=2.0, pka_bases=[9.0])
+    part = partition_from_molecule(mol, fup=0.5, bp=1.0, hematocrit=profile.hematocrit)
+    plan = build_dose_plan(route=route, amount_mg=amount_mg)
+    return PBPKModel(
+        physiology=profile,
+        partition=part,
+        bp=1.0,
+        fup=0.5,
+        cl_hep_l_h=cl_hep_l_h,
+        cl_renal_l_h=0.2,
+        dose_plan=plan,
+        absorption=AbsorptionParams(**abs_kwargs),  # type: ignore[arg-type]
+    )
+
+
+def test_bioavailable_fraction_iv_is_unity() -> None:
+    m = _model_with_abs(Route.IV_BOLUS, 10.0, 0.0)
+    assert bioavailable_fraction(m, Route.IV_BOLUS, 10.0, None) == 1.0
+    assert bioavailable_fraction(m, Route.IV_INFUSION, 10.0, np.array([5.0])) == 1.0
+
+
+def test_bioavailable_fraction_depot_uses_availability() -> None:
+    from types import SimpleNamespace
+
+    sc = _model_with_abs(Route.SUBCUTANEOUS, 10.0, 0.0, depot_bioavailability=0.64)
+    assert bioavailable_fraction(sc, Route.SUBCUTANEOUS, 10.0, None) == pytest.approx(0.64)
+    td = _model_with_abs(Route.TRANSDERMAL, 10.0, 0.0, depot_bioavailability=0.1)
+    assert bioavailable_fraction(td, Route.TRANSDERMAL, 10.0, np.array([0.0])) == pytest.approx(0.1)
+    # A (theoretically) out-of-range availability is clamped onto [0, 1].
+    stub = SimpleNamespace(
+        absorption=SimpleNamespace(depot_bioavailability=1.3),
+        physiology=SimpleNamespace(organ_flow={"liver": 1.4}),
+        cl_hep_l_h=0.0,
+    )
+    assert bioavailable_fraction(stub, Route.INTRAMUSCULAR, 10.0, None) == pytest.approx(1.0)
+    stub_low = SimpleNamespace(
+        absorption=SimpleNamespace(depot_bioavailability=-0.5),
+        physiology=SimpleNamespace(organ_flow={"liver": 1.4}),
+        cl_hep_l_h=0.0,
+    )
+    got = bioavailable_fraction(stub_low, Route.INTRAMUSCULAR, 10.0, np.array([0.0]))
+    assert got == pytest.approx(0.0)
+
+
+def test_bioavailable_fraction_oral_first_pass() -> None:
+    m = _model_with_abs(Route.ORAL, 100.0, cl_hep_l_h=0.5)
+    # No feces sink -> Fa = 1 and F = 1 - Eh < 1 because of hepatic extraction.
+    f_no_sink = bioavailable_fraction(m, Route.ORAL, 100.0, None)
+    f_clean = bioavailable_fraction(m, Route.ORAL, 100.0, np.array([0.0, 0.0]))
+    assert 0.0 < f_clean < 1.0
+    assert f_no_sink == pytest.approx(f_clean)
+    # All of the dose overflowing into the feces sink -> nothing absorbed.
+    assert bioavailable_fraction(m, Route.ORAL, 100.0, np.array([0.0, 100.0])) == 0.0
+    # Zero dose with a computed (finite) feces sink: absorbed term is skipped.
+    assert bioavailable_fraction(m, Route.ORAL, 0.0, np.array([0.0, 1.0])) == pytest.approx(
+        bioavailable_fraction(m, Route.ORAL, 0.0, None)
+    )
+
+
+def test_simulate_reports_bioavailability_f_and_passes_to_metrics() -> None:
+    m = _model_with_abs(Route.ORAL, 100.0, cl_hep_l_h=0.5)
+    r = simulate_pbpk(m, tmax_h=24.0, n_eval=120)
+    assert r.bioavailability_f is not None
+    assert 0.0 < r.bioavailability_f <= 1.0
+    assert r.pk_metrics().f_abs == pytest.approx(r.bioavailability_f)
+    iv = simulate_pbpk(_model_with_abs(Route.IV_BOLUS, 10.0, 0.0), tmax_h=24.0, n_eval=120)
+    assert iv.bioavailability_f == 1.0
+
+
+# ---------------------------------------------------------------------------
 # compute_pk_metrics edge cases
 # ---------------------------------------------------------------------------
 def _metrics(conc, dose=100.0, route=Route.IV_BOLUS):
@@ -246,3 +326,16 @@ def test_pk_metrics_zero_dose_gives_zero_metrics() -> None:
     assert m.cl_l_h == 0.0
     assert m.mrt_h == 0.0
     assert m.vss_l == 0.0
+
+
+def test_pk_metrics_f_abs_passthrough_and_validation() -> None:
+    t = np.linspace(0.0, 24.0, 50)
+    c = np.exp(-0.2 * t) * 10.0
+    m = compute_pk_metrics(t, c, 100.0, Route.ORAL, f_abs=0.7)
+    assert m.f_abs == pytest.approx(0.7)
+    assert m.as_dict()["bioavailability_f"] == pytest.approx(0.7)
+    assert compute_pk_metrics(t, c, 100.0, Route.ORAL).f_abs == 1.0
+    with pytest.raises(ValueError, match="f_abs"):
+        compute_pk_metrics(t, c, 100.0, Route.ORAL, f_abs=-0.1)
+    with pytest.raises(ValueError, match="f_abs"):
+        compute_pk_metrics(t, c, 100.0, Route.ORAL, f_abs=1.5)

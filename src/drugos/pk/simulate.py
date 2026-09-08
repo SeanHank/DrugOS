@@ -15,6 +15,39 @@ NDArray = np.ndarray[tuple[int], np.dtype[np.float64]]
 _METHOD = Literal["RK23", "RK45", "DOP853", "Radau", "BDF", "LSODA"]
 _DEFAULT_N_EVAL = 601
 
+_DEPOT_ROUTES = frozenset({Route.SUBCUTANEOUS, Route.INTRAMUSCULAR, Route.TRANSDERMAL})
+_IV_ROUTES = frozenset({Route.IV_BOLUS, Route.IV_INFUSION})
+
+
+def bioavailable_fraction(
+    model: PBPKModel,
+    route: Route,
+    dose_mg: float,
+    feces_cum_mg: NDArray | None,
+) -> float:
+    """Model-predicted systemic bioavailability ``F`` (doc/05 §2.1, 0..1).
+
+    IV doses are 100% bioavailable; depot routes (SC/IM/transdermal) deliver
+    the depot availability fraction directly (they bypass the portal vein).
+    For oral dosing the absorbed fraction (dose minus the colon-transit feces
+    sink) reaches the liver through the portal blood and suffers a
+    well-stirred first-pass hepatic extraction ``Eh = CL_h/(Q_h + CL_h)``, so
+    ``F = Fa * (1 - Eh)``.  The PBPK model already routes absorbed oral drug
+    into the liver compartment, so this is the reported first-pass-corrected
+    bioavailability.
+    """
+    if route in _IV_ROUTES:
+        return 1.0
+    if route in _DEPOT_ROUTES:
+        return min(1.0, max(0.0, float(model.absorption.depot_bioavailability)))
+    absorbed = 1.0
+    if feces_cum_mg is not None and dose_mg > 0:
+        absorbed = 1.0 - float(feces_cum_mg[-1]) / dose_mg
+    qh = model.physiology.organ_flow["liver"] * 60.0  # L/h
+    eh = model.cl_hep_l_h / (qh + model.cl_hep_l_h) if (qh + model.cl_hep_l_h) > 0 else 0.0
+    value = max(0.0, min(1.0, absorbed * (1.0 - eh)))
+    return float(value)
+
 
 @dataclass(slots=True)
 class PkMetrics:
@@ -72,9 +105,16 @@ class PBPKResult:
     n_eval: int = _DEFAULT_N_EVAL
     solver: str = "LSODA"
     final_state: NDArray | None = None
+    bioavailability_f: float | None = None
 
     def pk_metrics(self) -> PkMetrics:
-        return compute_pk_metrics(self.t, self.plasma_total, self.dose_mg, self.route)
+        return compute_pk_metrics(
+            self.t,
+            self.plasma_total,
+            self.dose_mg,
+            self.route,
+            f_abs=self.bioavailability_f or 1.0,
+        )
 
     def to_data_contract(self) -> dict[str, object]:
         """Stage-1 slice of the pipeline data contract (doc/03, section 3)."""
@@ -180,6 +220,9 @@ def simulate_pbpk(
         n_eval=n_eval,
         solver=method,
         final_state=y,
+        bioavailability_f=bioavailable_fraction(
+            model, _route_of(model), model.dose_plan.total_dose_mg, feces
+        ),
     )
 
 
@@ -193,8 +236,17 @@ def compute_pk_metrics(
     concentration: NDArray,
     dose_mg: float,
     route: Route,
+    *,
+    f_abs: float = 1.0,
 ) -> PkMetrics:
-    """Non-compartmental PK metrics (linear trapezoid + log-linear terminal)."""
+    """Non-compartmental PK metrics (linear trapezoid + log-linear terminal).
+
+    ``f_abs`` is the model-predicted systemic bioavailability (default 1.0,
+    e.g. IV); callers with access to the PBPK model (``PBPKResult``) pass the
+    orally-extracted first-pass value from :func:`bioavailable_fraction`.
+    """
+    if not (0.0 <= f_abs <= 1.0):
+        raise ValueError("f_abs must be in [0, 1]")
     if t.size < 3:
         raise ValueError("at least 3 time points are required for PK metrics")
     conc = np.asarray(concentration, dtype=float)
@@ -253,4 +305,5 @@ def compute_pk_metrics(
         c_last_mg_l=float(conc[-1]),
         dose_mg=dose_mg,
         route=route,
+        f_abs=f_abs,
     )

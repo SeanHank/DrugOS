@@ -3,6 +3,7 @@
 import math
 
 import numpy as np
+import pytest
 
 from drugos.inputs.models import HumanProfile, Molecule, Route, Sex
 from drugos.inputs.parse_dosing import build_dose_plan
@@ -84,6 +85,41 @@ def test_oral_absorbed_fraction_responds_to_rate() -> None:
     assert f_fast > 0.9
     assert f_slow < f_fast
     assert f_slow > 0.0
+
+
+def test_solubility_limited_absorption_caps_dissolved_pool() -> None:
+    # A low logS-equivalent solubility caps the dissolved small-intestine mass,
+    # spilling the excess dose undissolved to the colon/feces sink (novel/ADMET
+    # runs only).  High solubility behaves like the default first-order path.
+    dose_mg = 1000.0
+    low_sol = _model(route=Route.ORAL, amount_mg=dose_mg)
+    low_sol.absorption = AbsorptionParams(
+        k_si_absorption=0.55, solubility_mg_ml=0.005, gi_volume_ml=250.0
+    )
+    high_sol = _model(route=Route.ORAL, amount_mg=dose_mg)
+    high_sol.absorption = AbsorptionParams(
+        k_si_absorption=0.55, solubility_mg_ml=50.0, gi_volume_ml=250.0
+    )
+    r_low = simulate_pbpk(low_sol, tmax_h=72.0, n_eval=300)
+    r_high = simulate_pbpk(high_sol, tmax_h=72.0, n_eval=300)
+
+    def feces_frac(m: PBPKModel, r: PBPKResult) -> float:
+        return float(r.feces_cum_mg[-1]) / m.dose_plan.total_dose_mg
+
+    assert feces_frac(low_sol, r_low) > feces_frac(high_sol, r_high)
+    assert float(np.max(r_low.plasma_total)) < float(np.max(r_high.plasma_total))
+    # The two-compartment capacity itself is the gate: 0.005 mg/mL * 250 mL.
+    cap_mg = 0.005 * 250.0
+    assert 0.0 < cap_mg < dose_mg
+
+
+def test_absorption_params_reject_bad_solubility() -> None:
+    with pytest.raises(ValueError):
+        AbsorptionParams(solubility_mg_ml=0.0)
+    with pytest.raises(ValueError):
+        AbsorptionParams(solubility_mg_ml=-1.0)
+    with pytest.raises(ValueError):
+        AbsorptionParams(gi_volume_ml=0.0)
 
 
 def test_repeated_doses_build_accumulation() -> None:

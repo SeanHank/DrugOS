@@ -51,7 +51,7 @@ Each stage is validated independently against its own literature before coupling
 - Unit tests per stage on analytic/limiting-case solutions (e.g., one-compartment bolus analytic vs numeric; zero-dose baseline recovery to steady state).
 - Golden-file regression tests on benchmark compounds.
 - Data-contract schema tests at every stage boundary.
-- **G4 rule:** every new model feature must add a validation case before merge; `python validation/run_validation.py` (25/25 cases green, see `validation/report.md`) regenerates the report and fails the gate on any red case.
+- **G4 rule:** every new model feature must add a validation case before merge; `python validation/run_validation.py` (27/27 cases green, see `validation/report.md`) regenerates the report and fails the gate on any red case.
 - **R is a hard runtime dependency:** a pipeline run without R raises (no silent solver-substitution); each `run_pipeline` streams an `r_verify` block into the JSON contract and the report.
 
 ## 2. Risk Assessment

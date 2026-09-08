@@ -164,6 +164,7 @@ BIOMARKERS: dict[str, BiomarkerSpec] = {
     "creatinine": BiomarkerSpec(
         "serum creatinine", "xULN", 0.0, 1.0, "higher", (1.5, 2.0, 3.0, 4.0)
     ),
+    "KIM_1": BiomarkerSpec("KIM-1 (urinary)", "xUNL", 0.0, 1.0, "higher", (1.5, 3.0, 5.0, 10.0)),
     "CNS_exposure": BiomarkerSpec(
         "CNS exposure ratio", "Cmax/IC50", 0.0, 0.1, "higher", (0.1, 0.32, 1.0, 3.2)
     ),
@@ -198,11 +199,15 @@ def summarize_kidney(
     t_h: NDArray,
     gfr_ml_min: NDArray,
     scr_ratio: NDArray,
+    kim1_xunl: NDArray | None = None,
 ) -> list[BiomarkerGrade]:
-    """Grade kidney rows (GFR trajectory + peak creatinine ratio)."""
+    """Grade kidney rows (GFR trajectory + creatinine ratio + KIM-1)."""
     gfr = grade_timeseries(t_h, gfr_ml_min, BIOMARKERS["gfr"])
     scr = grade_timeseries(t_h, scr_ratio, BIOMARKERS["creatinine"])
-    return [gfr, scr]
+    rows = [gfr, scr]
+    if kim1_xunl is not None:
+        rows.append(grade_timeseries(t_h, kim1_xunl, BIOMARKERS["KIM_1"]))
+    return rows
 
 
 __all__ = [

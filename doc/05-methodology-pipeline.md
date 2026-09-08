@@ -63,7 +63,7 @@ the equivalent IV bolus (see §1.6 for the transdermal baseline note).
 
 **TMDD coupling (forward reference).** If target engagement consumes significant drug (high-affinity, high-abundance target), Stage 2 occupancy fluxes (drug + receptor -> complex -> internalization/clearance) feed back into the tissue mass balances. In monolithic mode this is native; in sequential mode it is approximated iteratively.
 
-**PK metrics.** Cmax, tmax, AUCinf, t1/2, Vss, Cl are computed from the simulated profiles and reported.
+**PK metrics.** Cmax, tmax, AUCinf, t1/2, Vss, Cl are computed from the simulated profiles and reported. **Systemic bioavailability `F` is also reported per route** (doc/12 row PK-f): IV = 1; depot routes (SC/IM/transdermal) = the depot bioavailability; oral = `Fa·(1 − Eh)` where `Fa = 1 − feces_fraction` (the colon-transit feces sink) and `Eh = CL_h/(Q_h + CL_h)` is the well-stirred first-pass hepatic extraction — the model already routes absorbed oral drug into the liver compartment, so this is the first-pass-corrected value, `PkMetrics.f_abs`. `Fa` itself follows the permeability-gated absorption constant tuned to `RunSpec.fa` (§1.6), so reported `F` reflects both the drug's absorbability and its hepatic extraction.
 
 ### 1.5 Implementation
 
@@ -82,11 +82,29 @@ Baseline simplifications, each recorded in doc/01 §5.3, are:
   deferred.
 - **Oral absorption** is ACAT-lite: first-order stomach -> small-intestine ->
   colon transit with pH-dependent dissolution; no multi-segment
-  small-intestinal dissolution resolution.
+  small-intestinal dissolution resolution. **The small-intestine absorption
+  rate is permeability/Fa-gated**: `_absorption_params` tunes
+  `k_si_absorption` to the compound's fraction-absorbed target
+  (`absorption_rate_from_fa`, `RunSpec.fa`) — from the benchmark published
+  `f_abs` band (or `fa_override`), from the predicted HIA head for ADMET-AI
+  SMILES runs (`_admet_fa`), and from the default endogenous rate otherwise —
+  so a low-permeability molecule peaks lower/later and loses more to the
+  colon-feces sink while a fast one absorbs in the proximal gut.  **Solubility-
+  limited dissolution** is gated on the ADMET-AI `logS` for novel molecules:
+  the dissolved small-intestine pool is capped at `S * V_gi`
+  (`AbsorptionParams.solubility_mg_ml`), so an excess low-solubility dose
+  spills undissolved mass forward to the colon/feces sink.  Benchmark runs
+  (no ADMET call) are unaffected.
 - **SC/IM/transdermal absorption** is a first-order depot (mass-conserving,
   user-tunable `k_depot_absorption` / `F`); no microcirculation/lymphatic
   resolution in the subcutaneous tissue, and transdermal uses the generic
   depot defaults (a skin-permeation multi-layer model is deferred).
+- **ADMET -> PK auto-wiring** is first-class: `pipeline.spec_from_admet` builds
+  a full `RunSpec` for a novel molecule from `fup_plasma`,
+  `cl_int_hep_ml_min_kg` (scaled by body weight), GFR-derived renal clearance
+  and the HIA absorption gate — shared verbatim by the CLI
+  (`cli._smiles_spec`) and direct `run_pipeline` consumers, so the chain
+  "new chemistry -> in-vivo concentration" has exactly one implementation.
 - **TMDD** is approximated iteratively via the opt-in `feedback_loop` driver
   (Stage 4 -> Stage 1 PK rescaling, §4.5), not through Stage-2 mass-balance
   flux coupling.
@@ -117,6 +135,16 @@ Priority order for Kd / kon / koff of drug-target pairs:
 2. **Structure-based AI affinity** (CORDIAL/IPBind-class) mapped from predicted binding energy to Kd when a 3D complex is obtainable (docking or AlphaFold target + RDKit pose via docking).
 3. **Sequence/descriptor-based DTA** (AttentionDTA-class) otherwise.
 4. **Fallback default** for safety targets: use class-typical IC50/EC50 medians for pharmacology-informed priors and flag low confidence.
+
+> **ADMET-AI hERG sieve (2026.9.0).** For novel molecules scored by ADMET-AI
+> without a measured hERG potency, the predicted hERG head acts as a *sieve*:
+> a predicted non-blocker (`P < 0.5`) demotes the dofetilide-class panel prior
+> (2 nM) to a weak-kD floor (1 mM), a predicted blocker keeps the panel prior.
+> The effective KD (sieve result, or a per-compound `qt_ic50_nm` override)
+> replaces the hERG site in the safety panel once, so Stage-2 occupancy, the
+> QT drive and the exposure anchor all stay mutually consistent
+> (`_effective_herg_kd_nm` / `_herg_sieved_panel`). Benchmarks (no ADMET-AI
+> call) fall back to the panel prior unchanged.
 
 Target abundance (Rtot per tissue) comes from tissue expression/quantitative proteomics tables; store per tissue.
 
@@ -191,6 +219,8 @@ Model geometry mirrors the MET-QSP precedent (~100 species / ~70 ODEs) and is ex
 
 Map pathway/toxicity signals to organ-level functional endpoints. The baseline (2026.9.0) covers liver, cardiovascular, and kidney.
 
+> **CYP450 abundance table (Stage 4 upstream data):** `HumanPhysiology` exposes per-isoform hepatic microsomal abundances (`CYP_ABUNDANCE_PMOL_MG`, Barter et al. 2013 central immunoquantified values for CYP1A2/2A6/2B6/2C8/2C9/2C19/2D6/2E1/3A4) and the derived per-isoform liver content (`hepatic_cyp_content_nmol`). This is a *data* table that a future enzyme-kinetics stage consumes; today's lumped `cl_hep` clearances do not read it, so predictions are unchanged.
+
 ### 4.2 Liver (DILI) — QST Sub-Model (DILIsym-style)
 
 Mechanistic sub-models:
@@ -204,7 +234,7 @@ Mechanistic sub-models:
 **Inputs.** PBPK liver tissue exposure (`C_liver(t)`, free), plus in-vitro IC50/assay parameters (BSEP inhibition, ETC inhibition, oxidative stress) from literature/ChEMBL/in-vitro consortia data.
 **Outputs.** ALT/AST/total-bilirubin serum trajectories; dead-cell fraction; DILI-grade classification (ALT > 3x ULN; Hy's Law criteria). Follows the fezolinetant DILIsym precedent where PBPK exposure + in-vitro toxicity parameters predict liver signal.
 
-> **Implemented (2026.9.0):** `src/drugos/organ/liver.py` — cholestasis (de Bruijn & Rietjens bile-acid PBK, R-7), mitochondrial (ETC, adaptive mitogenesis), redox/GSH, hepatocyte death (sigmoid kill + regeneration) ODEs; `LiverParams` carries compound-specific IC50s, `liver_params_from_panel()` wires the Stage-2 safety panel. Validated: acetaminophen overdose reproduces ALT > 3x ULN with Hy's Law while therapeutic dosing stays grade 0/1 (L2 case, with the cholestasis ranking pinned by R-7).
+> **Implemented (2026.9.0):** `src/drugos/organ/liver.py` — cholestasis (de Bruijn & Rietjens bile-acid PBK, R-7), mitochondrial (ETC, adaptive mitogenesis), redox/GSH, hepatocyte death (sigmoid kill + regeneration) ODEs; `LiverParams` carries compound-specific IC50s, `liver_params_from_panel()` wires the Stage-2 safety panel. **Pathway→organ closure:** the Stage-3 ERK/MAPK readout fold-change is the hepatocyte `proliferation_signal` that scales `regeneration_1h` via `regeneration_scale()` (damped `regen_pathway_gain=0.5`, clamped to `[regen_pathway_min=0.5, regen_pathway_max=1.5]`, so an off-target pathway suppression can attenuate but never ablate regeneration); the reported total-bilirubin rise is capped at `bile_rise_max_fold`×ULN while the un-clamped excess stays in the mechanical `stress`. **Immune-mediated axis seam:** `combined_stress()` carries an explicit fourth (immune) axis weighted by `LiverParams.immune_weight` (default 0, so every shipped default run keeps the validated cholestasis/ATP/GSH composition exactly); it is the stub endpoint for a future immune-DILI driver. Validated: acetaminophen overdose reproduces ALT > 3x ULN with Hy's Law while therapeutic dosing stays grade 0/1, and the regeneration-coupling + bilirubin ceiling are pinned by L2 cases.
 
 ### 4.3 Cardiovascular — Lumped Circulation + Electrical Axis
 
@@ -212,20 +242,20 @@ Mechanistic sub-models:
 - **hERG/QT axis**: from hERG blockade fraction (Stage 2 off-target), estimate IKr reduction and a QTc-prolongation model (multiplicative / Emax on hERG channel current; literature QTc-hERG relationships). Maps to torsades-de-pointes risk band.
 - **Inotropy/chronotropy modulators**: beta/catecholamine pathway effects feed into contractility and rate.
 
-> **Implemented (2026.9.0):** `src/drugos/organ/cardiac.py` — `predict_qtc()` Emax hERG->IKr->QTc axis with TdP banding (450/480/500 ms) and a two-compartment Windkessel (`simulate_hemodynamics()`) for MAP/CVP/CO/SV. The hERG blockade fraction is driven by the **PBPK cardiac (heart) free exposure** (`unbound_tissues["heart"]`), not the hepatic one. Validated: 0.5 mg dofetilide peak Delta-QTc 20 ms lies in the published prolongation band vs a negligible-hERG control (L3 case).
+> **Implemented (2026.9.0):** `src/drugos/organ/cardiac.py` — `predict_qtc()` Emax hERG->IKr->QTc axis with TdP banding (450/480/500 ms) and a two-compartment Windkessel (`simulate_hemodynamics()`) for MAP/CVP/CO/SV. The hERG blockade fraction is driven by the **PBPK cardiac (heart) free exposure** (`unbound_tissues["heart"]`), not the hepatic one. **Inotropy/chronotropy coupling (pathway→organ):** the Stage-3 ERK/MAPK amplification ratio gates `CardiacParams.inotropy = chronotropy` via `_cardiac_tone_scale()` (damped `gain=0.2`, capped at 1.3×); the ERK proxy encodes only the *stimulatory* branch (ERK1/2 is downstream of beta-adrenergic E-C coupling), so a baseline or suppressed readout keeps tone exactly 1.0 and the loop `co_fraction` stays neutral for benign drugs, while a genuinely amplified readout raises CO/HR. Sympathetic suppression is explicitly deferred (the ERK readout does not encode it). Validated: 0.5 mg dofetilide peak Delta-QTc 20 ms lies in the published prolongation band vs a negligible-hERG control (L3 case).
 
 ### 4.4 Kidney — Nephron + GFR Model
 
 - **Nephron-level model** (Physiome neural-nephron lineage, catalogued P7): glomerular filtration, tubular reabsorption/secretion; clearance coupling with Stage 1 renal elimination.
 - **Nephrotoxicity endpoints**: acute kidney injury proxies (GFR decline, tubular injury biomarker (KIM-1 heteromer in practice)) — the baseline keeps serum creatinine + GFR from renal function sub-model.
 
-> **Implemented (2026.9.0):** `src/drugos/organ/kidney.py` — nephron injury sigmoid drives a floored GFR; serum creatinine from the closed-form balance Scr = P/GFR; KDIGO AKI stage from Scr ratio/GFR drop. **The baseline GFR is anchored to the CKD-EPI 2021 race-free creatinine equation** (R-6, doc/12 row 4b) whenever a measured serum creatinine is carried on the profile (`ckdepi_2021_egfr`, BSA-scaled via Mosteller). Validated: exact Scr=P/GFR at zero exposure, monotonic KDIGO escalation, and CKD-EPI reference points / pipeline wiring (L2 cases).
+> **Implemented (2026.9.0):** `src/drugos/organ/kidney.py` — nephron injury sigmoid drives a floored GFR; serum creatinine from the closed-form balance Scr = P/GFR; KDIGO AKI stage from Scr ratio/GFR drop. **The baseline GFR is anchored to the CKD-EPI 2021 race-free creatinine equation** (R-6, doc/12 row 4b) whenever a measured serum creatinine is carried on the profile (`ckdepi_2021_egfr`, BSA-scaled via Mosteller). **KIM-1 tubular biomarker:** the proximal-tubule injury signal is translated to a graded urinary KIM-1 xUNL row (`summarize_clinical_kidney`: `1 + 8·injury`) with CTCAE-style thresholds (1.5/3/5/10 xUNL), so nephrotoxicity is also surfaced by a tubule-specific marker, not only by GFR/creatinine. Validated: exact Scr=P/GFR at zero exposure, monotonic KDIGO escalation, and CKD-EPI reference points / pipeline wiring (L2 cases).
 
 ### 4.5 Feedback to PK
 
 Organ dysfunction feeds back to PK: reduced hepatic clearance (liver), reduced GFR (kidney), reduced cardiac output (perfusion-limited distribution). Implement in monolithic mode directly; in sequential mode via a slow-timescale outer loop (recompute PBPK with updated organ parameters once or twice).
 
-> **Implemented (2026.9.0):** `src/drugos/organ/feedback.py` — `feedback_from_results()` maps dead fraction / GFR/CO factors to `OrganFeedback`; `apply_pk_scaling()` returns a PBPK model copy with scaled hepatic/renal clearances and perfusion (hepatic/renal/CO), leaving the original untouched.
+> **Implemented (2026.9.0):** `src/drugos/organ/feedback.py` — `feedback_from_results()` maps dead fraction / GFR/CO factors to `OrganFeedback`; `apply_pk_scaling()` returns a PBPK model copy with scaled hepatic/renal clearances and perfusion (hepatic/renal/CO), leaving the original untouched. The cardiac-output factor is **derived from the simulated hemodynamics**: `co_fraction = CO_simulated / CO_reference` (from `CardiacResult.co_l_min`), so a reduced-cardiac-output physiology scales perfusion-limited distribution on the re-run (neutral 1.0 with intact cardiac panels).
 
 ---
 
@@ -233,8 +263,19 @@ Organ dysfunction feeds back to PK: reduced hepatic clearance (liver), reduced G
 
 ### 5.1 Biomarker Translation & Grading
 
-- Map organ outputs to clinical-grade biomarkers with units and reference ranges (ALT, AST, bilirubin, GFR, creatinine, HR, BP, QTc).
+- Map organ outputs to clinical-grade biomarkers with units and reference ranges (ALT, AST, bilirubin, GFR, creatinine, **urinary KIM-1**, HR, BP, QTc).
 - Grade each (CTCAE-style Grade 0-4) with severity thresholds; produce time-to-onset and duration.
+
+> **Kidney row set.** `summarize_clinical_kidney` grades GFR (mL/min), serum
+> creatinine (xULN) and urinary KIM-1 (xUNL, derived from the nephron injury
+> fraction) so AKI is surfaced both by the functional markers and by a
+> proximal-tubule injury biomarker (`BIOMARKERS["KIM_1"]`).
+
+> **Spec-pinned grading.** Biomarker grading threads the *spec-driven*
+> constants (e.g. `cns_ic50_nm`, the effective hERG KD) into the organ
+> summary instead of re-instantiating model defaults (`_grade_organ` carries
+> the `CnsParams` used by the simulation), so the reported margins always
+> match the simulated exposure-ratio anchors.
 
 ### 5.2 Composite Toxicity Scoring
 

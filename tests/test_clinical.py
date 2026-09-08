@@ -125,6 +125,15 @@ def test_summary_helpers() -> None:
     kidney = summarize_kidney(T, gfr, scr)
     assert kidney[0].grade == 2  # gfr <= 60
     assert kidney[1].grade == 0
+    kim1 = np.array([1.0, 2.5, 2.5, 1.0, 1.0])
+    kidney_k = summarize_kidney(T, gfr, scr, kim1_xunl=kim1)
+    assert [b.name for b in kidney_k] == ["GFR", "serum creatinine", "KIM-1 (urinary)"]
+    assert kidney_k[2].grade == 1  # peak 2.5 xUNL crosses 1.5
+
+
+def test_kim1_catalogue_thresholds() -> None:
+    assert BIOMARKERS["KIM_1"].thresholds == (1.5, 3.0, 5.0, 10.0)
+    assert BIOMARKERS["KIM_1"].unit == "xUNL"
 
 
 def test_biomarkers_catalogue_has_cns() -> None:

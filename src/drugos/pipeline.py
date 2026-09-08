@@ -16,14 +16,20 @@ from typing import Any
 
 import numpy as np
 
-from drugos.clinical.biomarkers import BIOMARKERS, BiomarkerGrade, grade_absolute, grade_timeseries
+from drugos.clinical.biomarkers import (
+    BIOMARKERS,
+    BiomarkerGrade,
+    grade_absolute,
+    grade_timeseries,
+    summarize_kidney,
+)
 from drugos.clinical.toxicity import Endpoint, ToxicityReport, score_toxicity
-from drugos.inputs.models import DosePlan, HumanProfile, Molecule, Sex
+from drugos.inputs.models import DosePlan, HumanProfile, Molecule, Route, Sex
 from drugos.inputs.parse_dosing import build_dose_plan
 from drugos.inputs.parse_structure import parse_structure
 from drugos.inputs.resolve_human import resolve_human
 from drugos.organ.base import NDArray
-from drugos.organ.cardiac import CardiacResult, simulate_cardiac
+from drugos.organ.cardiac import CardiacParams, CardiacResult, simulate_cardiac
 from drugos.organ.cns import CnsParams, CnsResult, kpu_brain_from_bbb, simulate_cns
 from drugos.organ.feedback import OrganFeedback, apply_pk_scaling, feedback_from_results
 from drugos.organ.kidney import KidneyResult, simulate_kidney
@@ -32,8 +38,8 @@ from drugos.pathway.sbml_pathway import simulate_sbml_pathway
 from drugos.pathway.simulator import PathwayResult
 from drugos.pk.admet import AdmetOutput
 from drugos.pk.partitions import partition_from_molecule
-from drugos.pk.pbpk_build import AbsorptionParams, PBPKModel
-from drugos.pk.physiology import HumanPhysiology
+from drugos.pk.pbpk_build import AbsorptionParams, PBPKModel, absorption_rate_from_fa
+from drugos.pk.physiology import HumanPhysiology, build_human, glom_filtration_clearance
 from drugos.pk.simulate import PBPKResult, PkMetrics, compute_pk_metrics, simulate_pbpk
 from drugos.rbridge import RVerify
 from drugos.rbridge import verify_pk as _r_verify_pk
@@ -50,6 +56,7 @@ _DEFAULT_SCR_BASE_UMOL_L = 80.0
 _ALT_ULN_U_L = 40.0
 _BILI_ULN_MG_DL = 1.0
 _CNS_IC50_DEFAULT_NM = 1.0e5
+_HERG_WEAK_KD_NM = 1.0e6
 
 
 @dataclass(slots=True)
@@ -75,6 +82,7 @@ class RunSpec:
     include_pathway: bool = True
     feedback_loop: int = 0
     sc_im_ka_per_h: float | None = None
+    fa: float | None = None
     name: str = "compound"
 
     def __post_init__(self) -> None:
@@ -86,6 +94,8 @@ class RunSpec:
             raise ValueError("feedback_loop must be non-negative")
         if self.sc_im_ka_per_h is not None and self.sc_im_ka_per_h <= 0:
             raise ValueError("sc_im_ka_per_h must be positive")
+        if self.fa is not None and not (0.0 < self.fa <= 1.0):
+            raise ValueError("fa must be in (0, 1]")
         if self.qt_ic50_nm is not None and self.qt_ic50_nm <= 0:
             raise ValueError("qt_ic50_nm must be positive")
         if self.dili_ic50_nm is not None and self.dili_ic50_nm <= 0:
@@ -162,6 +172,7 @@ class RunResult:
                 "auc_last_mg_h_l": self.metrics.auc_last_mgh_l,
                 "auc_inf_mg_h_l": self.metrics.auc_inf_mgh_l,
                 "tmax_h": self.metrics.tmax_h,
+                "bioavailability_f": round(self.metrics.f_abs, 4),
                 "plasma_total": self.pk.plasma_total.tolist(),
                 "plasma_free": self.pk.plasma_free.tolist(),
                 "t_h": self.pk.t.tolist(),
@@ -199,6 +210,8 @@ class RunResult:
                     "peak_ast_u_l": liver.peak_ast_u_l,
                     "peak_bilirubin_uln": liver.peak_bilirubin_uln,
                     "max_dead_frac": liver.max_dead_frac,
+                    "regen_scale_min": round(float(np.min(liver.regen_scale)), 3),
+                    "regen_scale_peak": round(float(np.max(liver.regen_scale)), 3),
                 },
                 "cardiac": {
                     "delta_qtc_ms": float(np.max(cardiac.delta_qtc_ms)),
@@ -210,6 +223,9 @@ class RunResult:
                     "aki_grade": kidney.aki_grade,
                     "peak_scr_ratio": kidney.peak_scr_ratio,
                     "min_gfr_ml_min": kidney.min_gfr_ml_min,
+                    "peak_kim1_xunl": round(
+                        float(np.max(1.0 + _KIM1_RISE_PER_INJURY * kidney.injury)), 3
+                    ),
                 },
                 "cns": {
                     "peak_brain_free_nm": round(float(cns.peak_brain_free_nm), 3),
@@ -226,6 +242,7 @@ class RunResult:
                     "gfr_ml_min": _on_x(liver.t_h, kidney.t_h, kidney.gfr_ml_min).tolist(),
                     "scr_ratio": _on_x(liver.t_h, kidney.t_h, kidney.scr_ratio).tolist(),
                     "brain_free_nm": _on_x(liver.t_h, cns.t_h, cns.brain_free_nm).tolist(),
+                    "regen_scale": liver.regen_scale.tolist(),
                 },
             },
             "clinical": {
@@ -258,27 +275,23 @@ def _on_x(x_ref: NDArray, x_src: NDArray, y_src: NDArray) -> NDArray:
 
 
 def _herg_occupancy(
-    panel: PanelEngagement,
     t_h: NDArray,
     c_free_mg_l: NDArray,
     mw: float,
     qt_ic50_nm: float | None,
     n_eval: int = 601,
 ) -> NDArray:
-    """hERG occupancy either from an override affinity or the panel prior."""
-    if qt_ic50_nm is not None:
-        site = Target(
-            name="hERG (Kv11.1)",
-            kd_nm=qt_ic50_nm,
-            r0_nm=0.05,
-            reference="specified per-compound hERG affinity override",
-        )
-        occ = simulate_occupancy(t_h, c_free_mg_l, site, mw=mw, n_eval=n_eval)
-        return np.interp(t_h, occ.t_h, occ.occupancy)
-    for name, res in panel.results.items():
-        if "hERG" in name:
-            return np.interp(t_h, res.t_h, res.occupancy)
-    return np.zeros_like(t_h)
+    """hERG occupancy from the effective KD (override, ADMET-AI sieve, panel prior)."""
+    if qt_ic50_nm is None:
+        return np.zeros_like(t_h)
+    site = Target(
+        name="hERG (Kv11.1)",
+        kd_nm=qt_ic50_nm,
+        r0_nm=0.05,
+        reference="effective hERG affinity (override/sieved/panel prior)",
+    )
+    occ = simulate_occupancy(t_h, c_free_mg_l, site, mw=mw, n_eval=n_eval)
+    return np.interp(t_h, occ.t_h, occ.occupancy)
 
 
 def _dili_ic50(spec: RunSpec) -> float | None:
@@ -288,11 +301,107 @@ def _dili_ic50(spec: RunSpec) -> float | None:
     return min(cands) if cands else None
 
 
-def _qt_ic50(spec: RunSpec) -> float | None:
+def _effective_herg_kd_nm(spec: RunSpec) -> float | None:
+    """hERG KD used by Stage-2/4 and the exposure anchors (doc/05 2.2-2.3).
+
+    Precedence: a per-compound ``qt_ic50_nm`` override, else — for novel
+    molecules scored by ADMET-AI without a measured potency — the predicted
+    hERG head acts as a sieve: a predicted non-blocker (P < 0.5) demotes the
+    dofetilide-like panel prior (2 nM) to a weak-kD floor (1 mM), a predicted
+    blocker keeps the panel prior.  Benchmarks / no-ADMET runs fall back to the
+    panel class prior unchanged.
+    """
     if spec.qt_ic50_nm is not None:
         return spec.qt_ic50_nm
-    cands = [t.kd_nm for t in spec.panel if "hERG" in t.name]
-    return cands[0] if cands else None
+    prior = next((t.kd_nm for t in spec.panel if "hERG" in t.name), None)
+    ph = spec.admet.hERG if spec.admet is not None else None
+    if ph is None:
+        return prior
+    return _HERG_WEAK_KD_NM if ph < 0.5 else prior
+
+
+def _herg_sieved_panel(spec: RunSpec) -> tuple[Target, ...]:
+    """``spec.panel`` with the hERG site bound to the effective KD.
+
+    Keeps the Stage-2 occupancy (and therefore the primary signal and the
+    pathway drive) consistent with the QT and exposure anchors: when ADMET-AI
+    demotes a predicted non-blocker, the panel prior is replaced in every
+    consumer at once.
+    """
+    eff = _effective_herg_kd_nm(spec)
+    if eff is None:
+        return spec.panel
+    out = []
+    for t in spec.panel:
+        if "hERG" in t.name:
+            out.append(
+                Target(
+                    name=t.name,
+                    kd_nm=eff,
+                    kon_nm_h=t.kon_nm_h,
+                    r0_nm=t.r0_nm,
+                    rho_h=t.rho_h,
+                    kint_h=t.kint_h,
+                    low_confidence=True,
+                    reference="effective hERG KD (ADMET-AI-sieved or override)",
+                )
+            )
+        else:
+            out.append(t)
+    return tuple(out)
+
+
+def _qt_ic50(spec: RunSpec) -> float | None:
+    return _effective_herg_kd_nm(spec)
+
+
+def _proliferation_signal(pathway: PathwayResult, t_h: NDArray) -> NDArray | None:
+    """ERK readout fold-change over ``t_h`` driving hepatocyte regeneration.
+
+    A missing readout node or a degenerate (non-positive) drug-free baseline
+    yields ``None`` (no pathway coupling into the liver); otherwise the readout
+    concentration over its baseline interpolated onto ``t_h``.
+    """
+    ro = pathway.model.readout
+    if ro is None:
+        return None
+    base = pathway.baseline.get(ro, 0.0)
+    if not base > 0.0:
+        return None
+    fc = pathway.concentrations[ro] / base
+    return np.interp(t_h, pathway.t_h, fc)
+
+
+_CARDIAC_TONE_GAIN = 0.2
+_CARDIAC_TONE_MAX = 1.3
+
+
+def _cardiac_tone_scale(fc: NDArray | None) -> float:
+    """Mild inotropic/chronotropic tone from the ERK amplification ratio.
+
+    doc/05 4.3: beta/catecholamine pathway effects modulate contractility and
+    rate.  The shipped pathway kernel is the ERK/MAPK cascade (R-5), whose
+    doubly-phosphorylated-ERK readout is the available proxy (ERK1/2 is
+    downstream of beta-adrenergic E-C coupling).  The readout is a *stimulatory*
+    concentration: benign drugs sit at or below the drug-free baseline (here
+    ~0 fold), so only amplification above baseline (the inotropic branch) lifts
+    ``inotropy=chronotropy`` via ``clamp(1 + gain*(fc-1), 1, max)``; a baseline
+    or suppressed readout leaves tone exactly 1.0.  Sympathetic *suppression*
+    is not encoded by this readout and is deferred (doc/05 4.3), so a benign
+    molecule never disturbs hemodynamic neutrality or the loop co-fraction.
+    """
+    if fc is None:
+        return 1.0
+    mean = float(np.mean(fc))
+    if mean <= 1.0:
+        return 1.0
+    return float(
+        np.clip(
+            1.0 + _CARDIAC_TONE_GAIN * (mean - 1.0),
+            1.0,
+            _CARDIAC_TONE_MAX,
+        )
+    )
 
 
 def _panel_model(spec: RunSpec) -> PBPKModel:
@@ -300,11 +409,7 @@ def _panel_model(spec: RunSpec) -> PBPKModel:
     part = partition_from_molecule(
         spec.molecule, fup=spec.fup, bp=spec.bp, hematocrit=physiology.hematocrit
     )
-    absorption = (
-        AbsorptionParams(k_depot_absorption=spec.sc_im_ka_per_h)
-        if spec.sc_im_ka_per_h is not None
-        else AbsorptionParams()
-    )
+    absorption = _absorption_params(spec)
     return PBPKModel(
         physiology=physiology,
         partition=part,
@@ -315,6 +420,63 @@ def _panel_model(spec: RunSpec) -> PBPKModel:
         dose_plan=spec.dose_plan,
         absorption=absorption,
     )
+
+
+def _admet_fa(admet: AdmetOutput | None) -> float | None:
+    """Fraction-absorbed target from an ADMET-AI call (HIA, else bioavailable_Ma)."""
+    if admet is None:
+        return None
+    for attr in ("HIA", "bioavailable_Ma"):
+        value = getattr(admet, attr, None)
+        if value is not None and 0.0 < value <= 1.0:
+            return float(value)
+    return None
+
+
+def _admet_solubility_mg_ml(admet: AdmetOutput | None, mw: float) -> float | None:
+    """Solubility (mg/mL) from the ADMET-AI ``logS`` (log10 molar) call."""
+    log_s = getattr(admet, "log_s", None) if admet is not None else None
+    if log_s is None:
+        return None
+    log_s = float(log_s)
+    if not np.isfinite(log_s):
+        return None
+    return float(10.0**log_s) * float(mw) / 1000.0
+
+
+def _absorption_params(spec: RunSpec) -> AbsorptionParams:
+    """Permeability/Fa-gated, solubility-limited first-order absorption.
+
+    SC/IM/transdermal runs use the depot override; oral runs without an
+    explicit rate gate the small-intestine absorption constant to the
+    fraction-absorbed target ``fa`` (permeability-gated absorption, doc/05
+    §1.4), so a low-permeability compound absorbs slower and loses more to the
+    colon/feces sink while a fast one absorbs in the proximal gut.  For novel
+    molecules scored by ADMET-AI the population is an explicit ``fa`` before
+    an HIA-derived target (doc/05 1.2), so new chemistry never falls back to a
+    fixed 0.55 h^-1 blind.  A measured/predicted ``logS`` sets a
+    solubility-limited dissolution cap on the dissolved lumen pool (novel/ADMET
+    runs only), so a low-solubility dose spills undissolved mass to the
+    colon/feces sink.
+    """
+    if spec.sc_im_ka_per_h is not None:
+        return AbsorptionParams(k_depot_absorption=spec.sc_im_ka_per_h)
+    has_oral = any(ev.route is Route.ORAL for ev in spec.dose_plan.events)
+    if not has_oral:
+        return AbsorptionParams()
+    solubility = _admet_solubility_mg_ml(spec.admet, spec.mw)
+    if spec.fa is not None:
+        return AbsorptionParams(
+            k_si_absorption=absorption_rate_from_fa(spec.fa),
+            solubility_mg_ml=solubility,
+        )
+    admet_fa = _admet_fa(spec.admet)
+    if admet_fa is not None:
+        return AbsorptionParams(
+            k_si_absorption=absorption_rate_from_fa(admet_fa),
+            solubility_mg_ml=solubility,
+        )
+    return AbsorptionParams()
 
 
 def _organ_state(
@@ -331,10 +493,17 @@ def _organ_state(
     CnsResult,
     PathwayResult | None,
     float,
+    CnsParams,
 ]:
-    """Run the downstream stages (occupancy -> organ QST -> pathway) on ``pk``."""
+    """Run the downstream stages (occupancy -> pathway -> organ QST) on ``pk``."""
     liver_free = pk.unbound_tissues["liver"]
-    panel = simulate_panel(pk.t, liver_free, spec.panel, mw=spec.mw, n_eval=spec.n_eval)
+
+    # The hERG site enters every downstream consumer (occupancy/primary signal,
+    # QT drive, exposure anchors) at one effective KD — a measured override or,
+    # for ADMET-AI-scored novel molecules, the predicted-hERG sieve.
+    panel = simulate_panel(
+        pk.t, liver_free, _herg_sieved_panel(spec), mw=spec.mw, n_eval=spec.n_eval
+    )
 
     primary_signal = max(
         (r for r in panel.results.values()),
@@ -343,14 +512,43 @@ def _organ_state(
     )
 
     liver_params = spec.liver_params or liver_params_from_panel(spec.panel)
-    liver = simulate_liver(pk.t, liver_free, spec.mw, params=liver_params, n_eval=spec.n_eval)
+
+    # Stage-3 pathway before the organ QST: the ERK/MAPK readout fold-change is
+    # the proliferation signal that modulates hepatocyte regeneration, closing
+    # the occupancy -> pathway -> organ -> phenotype chain (doc/05 4.2).
+    pathway: PathwayResult | None = None
+    proliferation: NDArray | None = None
+    if spec.include_pathway and primary_signal is not None:
+        pathway = simulate_sbml_pathway(
+            primary_signal.t_h, primary_signal.occupancy, n_eval=spec.n_eval
+        )
+        proliferation = _proliferation_signal(pathway, pk.t)
+
+    liver = simulate_liver(
+        pk.t,
+        liver_free,
+        spec.mw,
+        params=liver_params,
+        n_eval=spec.n_eval,
+        proliferation_signal=proliferation,
+    )
 
     # hERG channel blockade is at the myocardium, so drive it with the PBPK
     # cardiac (heart) free tissue exposure, not the hepatic one.
     block = _herg_occupancy(
-        panel, pk.t, pk.unbound_tissues["heart"], spec.mw, spec.qt_ic50_nm, spec.n_eval
+        pk.t,
+        pk.unbound_tissues["heart"],
+        spec.mw,
+        _effective_herg_kd_nm(spec),
+        spec.n_eval,
     )
-    cardiac = simulate_cardiac(pk.t, block, model.physiology, n_eval=spec.n_eval)
+    cardiac_params = None
+    if proliferation is not None:
+        tone = _cardiac_tone_scale(proliferation)
+        cardiac_params = CardiacParams(inotropy=tone, chronotropy=tone)
+    cardiac = simulate_cardiac(
+        pk.t, block, model.physiology, params=cardiac_params, n_eval=spec.n_eval
+    )
 
     kidney_free = pk.unbound_tissues["kidney"]
     kidney = simulate_kidney(
@@ -365,28 +563,38 @@ def _organ_state(
     # partition is already folded in, so the residual kpu_brain scale is 1.0
     # unless ADMET-AI's BBB_Martins head predicts a non-penetrant (then 0.2).
     kpu_brain = kpu_brain_from_bbb(spec.admet.BBB if spec.admet is not None else None)
+    cns_params = CnsParams(ic50_nm=spec.cns_ic50_nm or _CNS_IC50_DEFAULT_NM, kpu_brain=kpu_brain)
     cns = simulate_cns(
         pk.t,
         pk.unbound_tissues["brain"],
         spec.mw,
-        CnsParams(ic50_nm=spec.cns_ic50_nm or _CNS_IC50_DEFAULT_NM, kpu_brain=kpu_brain),
+        cns_params,
     )
 
-    pathway: PathwayResult | None = None
-    if spec.include_pathway and primary_signal is not None:
-        pathway = simulate_sbml_pathway(
-            primary_signal.t_h, primary_signal.occupancy, n_eval=spec.n_eval
-        )
-
-    return panel, primary_signal, liver, block, cardiac, kidney, cns, pathway, kpu_brain
+    return panel, primary_signal, liver, block, cardiac, kidney, cns, pathway, kpu_brain, cns_params
 
 
 def _organ_feedback(
-    model: PBPKModel, liver: LiverTrajectory, kidney: KidneyResult
+    model: PBPKModel,
+    liver: LiverTrajectory,
+    kidney: KidneyResult,
+    cardiac: CardiacResult,
 ) -> OrganFeedback:
-    """PK scalings from the current organ state (doc/05 4.5, sequential outer loop)."""
+    """PK scalings from the current organ state (doc/05 4.5, sequential outer loop).
+
+    Cardiac output is derived from the hemodynamic state actually simulated in
+    the cardiac panel: ``co_fraction = CO_simulated / CO_reference``, so a
+    reduced-cardiac-output physiology (e.g. low inotropy/chronotropy in heart
+    failure) scales perfusion-limited distribution — ``apply_pk_scaling`` then
+    cuts organ flows and venous return for the re-run.
+    """
     gfr_fraction = kidney.min_gfr_ml_min / model.physiology.gfr_ml_min
-    return feedback_from_results(liver.max_dead_frac, gfr_fraction, 1.0)
+    ref_co_l_min = model.physiology.cardiac_output_ml_min / 1000.0
+    if ref_co_l_min > 0:
+        co_fraction = cardiac.co_l_min / ref_co_l_min
+    else:
+        co_fraction = 1.0
+    return feedback_from_results(liver.max_dead_frac, gfr_fraction, co_fraction)
 
 
 def run_pipeline(spec: RunSpec) -> RunResult:
@@ -414,8 +622,9 @@ def run_pipeline(spec: RunSpec) -> RunResult:
             _cns,
             _pathway,
             _kpu,
+            _cns_params,
         ) = _organ_state(pk, model, spec)
-        model = apply_pk_scaling(model, _organ_feedback(model, liver, kidney))
+        model = apply_pk_scaling(model, _organ_feedback(model, liver, kidney, _cardiac))
         pk = simulate_pbpk(model, tmax_h=spec.tmax_h, n_eval=spec.n_eval)
 
     (
@@ -428,18 +637,27 @@ def run_pipeline(spec: RunSpec) -> RunResult:
         cns,
         pathway,
         cns_kpu_brain,
+        cns_params,
     ) = _organ_state(pk, model, spec)
 
     physiology = model.physiology
     liver_free = pk.unbound_tissues["liver"]
     kidney_free = pk.unbound_tissues["kidney"]
 
+    metrics = compute_pk_metrics(
+        pk.t,
+        pk.plasma_total,
+        pk.dose_mg,
+        pk.route,
+        f_abs=pk.bioavailability_f or 1.0,
+    )
+
     organ = OrganStage(
         liver=liver,
         cardiac=cardiac,
         kidney=kidney,
         cns=cns,
-        biomarkers=_grade_organ(liver, cardiac, kidney, cns),
+        biomarkers=_grade_organ(liver, cardiac, kidney, cns, cns_params),
     )
 
     exposure = ExposureProfile(
@@ -476,12 +694,15 @@ def _grade_organ(
     cardiac: CardiacResult,
     kidney: KidneyResult,
     cns: CnsResult,
+    cns_params: CnsParams | None = None,
 ) -> dict[str, list[BiomarkerGrade]]:
     return {
         "liver": summarize_clinical_liver(liver),
         "cardiac": summarize_clinical_cardiac(cardiac),
         "kidney": summarize_clinical_kidney(kidney),
-        "cns": summarize_clinical_cns(cns),
+        "cns": summarize_clinical_cns(cns, cns_params)
+        if cns_params is not None
+        else summarize_clinical_cns(cns),
     }
 
 
@@ -506,12 +727,17 @@ def summarize_clinical_cardiac(cardiac: CardiacResult) -> list[BiomarkerGrade]:
     ]
 
 
+_KIM1_RISE_PER_INJURY = 8.0
+
+
 def summarize_clinical_kidney(kidney: KidneyResult) -> list[BiomarkerGrade]:
-    """Grade the kidney trajectory (GFR + creatinine ratio)."""
-    return [
-        grade_timeseries(kidney.t_h, kidney.gfr_ml_min, BIOMARKERS["gfr"]),
-        grade_timeseries(kidney.t_h, kidney.scr_ratio, BIOMARKERS["creatinine"]),
-    ]
+    """Grade the kidney trajectory (GFR + creatinine ratio + KIM-1)."""
+    return summarize_kidney(
+        kidney.t_h,
+        kidney.gfr_ml_min,
+        kidney.scr_ratio,
+        kim1_xunl=1.0 + _KIM1_RISE_PER_INJURY * kidney.injury,
+    )
 
 
 def summarize_clinical_cns(cns: CnsResult, params: CnsParams = CnsParams()) -> list[BiomarkerGrade]:
@@ -730,6 +956,10 @@ def spec_from_benchmark_data(
         raise ValueError(f"could not compute molecular weight for {bench.name}")
     qt_ic50, dili_ic50 = _other_benchmark_affinities(bench.name)
     liver_params = LiverParams() if bench.name == "acetaminophen" else None
+    fa = None
+    if bench.route.startswith("oral") and "f_abs" in bench.published:
+        lo, hi = bench.published["f_abs"]
+        fa = float(getattr(bench, "fa_override", None) or (lo + hi) / 2.0)
     return RunSpec(
         name=bench.name,
         molecule=mol,
@@ -745,12 +975,71 @@ def spec_from_benchmark_data(
         liver_params=liver_params,
         tmax_h=bench.tmax_h,
         n_eval=bench.n_eval,
+        fa=fa,
     )
 
 
 def _benchmark_plan(bench: _BenchmarkLike, dose_override_mg: float | None = None) -> DosePlan:
     amount = bench.dose_mg if dose_override_mg is None else dose_override_mg
     return build_dose_plan(route=bench.route, amount_mg=float(amount))
+
+
+def spec_from_admet(
+    molecule: Molecule,
+    admet: AdmetOutput,
+    profile: HumanProfile,
+    dose_plan: DosePlan,
+    *,
+    cl_hep_l_h: float | None = None,
+    cl_renal_l_h: float | None = None,
+    include_pathway: bool = True,
+    sc_im_ka_per_h: float | None = None,
+) -> RunSpec:
+    """Build a ``RunSpec`` for a novel molecule entirely from ADMET-AI.
+
+    This is the shared implementation of the ADMET -> PK auto-wiring (doc/05
+    1.2/4.1) so new chemistry enters the full chain without manual physchem:
+    ``fup`` comes from the predicted plasma protein binding; hepatic intrinsic
+    clearance (mL/min/kg) is scaled to whole-body ``cl_hep`` (L/h) by body
+    weight; renal clearance defaults to filtration of the free fraction
+    (``cl_renal_l_h`` overrides); the oral small-intestine absorption gate uses
+    the predicted HIA as ``fa``.  Elevates when the prediction lacks the
+    needed physchem signal for the chain to be meaningful.
+    """
+    smiles = getattr(molecule, "canonical_smiles", None) or getattr(molecule, "smiles", None) or ""
+    name = getattr(molecule, "name", None) or "custom"
+    parsed = parse_structure(smiles, name=name)
+    mw = float(parsed.mw or getattr(molecule, "mw", None) or 0.0)
+    if mw <= 0:
+        raise ValueError(f"could not compute molecular weight for {name}")
+    fup = admet.fup_plasma
+    if fup is None or not (0.0 < fup <= 1.0):
+        raise ValueError("ADMET-AI did not return a usable fup")
+    physiology = build_human(profile)
+    if cl_hep_l_h is None:
+        cl_int = admet.cl_int_hep_ml_min_kg
+        if cl_int is None:
+            raise ValueError("ADMET-AI did not return hepatic intrinsic clearance")
+        cl_hep_l_h = cl_int * 60.0 / 1000.0 * profile.weight_kg  # mL/min/kg -> L/h
+    if cl_renal_l_h is None:
+        cl_renal_l_h = glom_filtration_clearance(physiology.gfr_l_min * 1000.0, fup)
+    has_oral = any(ev.route is Route.ORAL for ev in dose_plan.events)
+    fa = _admet_fa(admet) if has_oral else None
+    return RunSpec(
+        name=name,
+        molecule=parsed,
+        profile=profile,
+        dose_plan=dose_plan,
+        cl_hep_l_h=cl_hep_l_h,
+        cl_renal_l_h=cl_renal_l_h,
+        mw=mw,
+        fup=fup,
+        bp=1.0,
+        admet=admet,
+        fa=fa,
+        include_pathway=include_pathway,
+        sc_im_ka_per_h=sc_im_ka_per_h,
+    )
 
 
 __all__ = [

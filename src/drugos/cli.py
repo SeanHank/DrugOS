@@ -27,6 +27,7 @@ from drugos.pipeline import (
     benchmark_data,
     benchmark_names,
     run_pipeline,
+    spec_from_admet,
     spec_from_benchmark_data,
 )
 from drugos.report import render_html, render_json, render_markdown, write_report
@@ -108,44 +109,32 @@ def _benchmark_lookup(name: str) -> Any:
 
 
 def _smiles_spec(args: _RunInputs) -> RunSpec:
-    """Spec for a custom SMILES using structure + ADMET-AI predicted PK."""
+    """Spec for a custom SMILES using structure + ADMET-AI predicted PK.
+
+    This now delegates to the shared ``pipeline.spec_from_admet`` builder so
+    the CLI and direct ``run_pipeline`` consumers share exactly one ADMET ->
+    PK auto-wiring implementation (doc/05 1.2/4.1).
+    """
     from drugos.inputs.parse_structure import parse_structure
     from drugos.pk.admet import predict_admet
-    from drugos.pk.physiology import build_human, glom_filtration_clearance
 
     assert args.smiles is not None
     mol = parse_structure(args.smiles, name="custom")
-    mw = float(mol.mw or 0.0)
-    if mw <= 0:
-        raise ValueError("could not compute molecular weight")
     pred = predict_admet(args.smiles)
     pred_obj = pred[0] if isinstance(pred, list) else pred
-    fup = pred_obj.fup_plasma
-    if fup is None or fup <= 0:
-        raise ValueError("ADMET-AI did not return a usable fup")
-    cl_int = pred_obj.cl_int_hep_ml_min_kg
-    if cl_int is None:
-        raise ValueError("ADMET-AI did not return hepatic intrinsic clearance")
-    weight_kg = args.weight
-    cl_hep = cl_int * 60.0 / 1000.0 * weight_kg  # mL/min/kg -> L/h (gross scaling)
     profile = HumanProfile(
-        sex=Sex(args.sex), age_y=args.age, height_cm=args.height, weight_kg=weight_kg
+        sex=Sex(args.sex), age_y=args.age, height_cm=args.height, weight_kg=args.weight
     )
-    physiology = build_human(profile)
-    cl_renal = glom_filtration_clearance(physiology.gfr_l_min * 1000.0, fup)
-    return RunSpec(
-        name=mol.name or "custom",
-        molecule=mol,
-        profile=profile,
-        dose_plan=build_dose_plan(args.route or "oral", args.dose or 10.0),
-        cl_hep_l_h=cl_hep,
-        cl_renal_l_h=cl_renal,
-        mw=mw,
-        fup=fup,
-        bp=1.0,
-        admet=pred_obj,
+    plan = build_dose_plan(args.route or "oral", args.dose or 10.0)
+    spec = spec_from_admet(
+        mol,
+        pred_obj,
+        profile,
+        plan,
         include_pathway=not args.no_pathway,
     )
+    spec.sc_im_ka_per_h = getattr(args, "sc_im_ka", None)
+    return spec
 
 
 def spec_from_cli(

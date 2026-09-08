@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import logging
 import math
 from dataclasses import dataclass
 from pathlib import Path
@@ -112,6 +113,10 @@ def _import_r() -> Any:
         with contextlib.redirect_stderr(io.StringIO()):
             import rpy2.robjects as ro
 
+        # rpy2's shutdown hook logs "Embedded R ended." to a handler that may
+        # point at a closed stream by interpreter-exit time; silencing its
+        # logger keeps G4 shutdown clean when embedded R ends.
+        logging.getLogger("rpy2.rinterface_lib.embedded").setLevel(logging.CRITICAL)
         _r_imported = ro
         return ro
     except Exception as exc:  # ImportError, OSError (missing libR), SystemExit

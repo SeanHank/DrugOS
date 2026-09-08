@@ -46,6 +46,7 @@ from drugos.organ.liver import (
     liver_params_from_panel,
     mitochondrial_block,
     redox_state,
+    regeneration_scale,
     simulate_gcdca_pbk,
     simulate_liver,
 )
@@ -122,6 +123,20 @@ def test_combined_stress_boundaries() -> None:
     assert combined_stress(1.0, 1.0, 1.0) == pytest.approx(0.5)
     assert combined_stress(1.0, 0.0, 0.0) == pytest.approx(1.0)
     assert combined_stress(0.0, 1.0, 1.0) == pytest.approx(0.0)
+
+
+def test_combined_stress_immune_axis_inert_by_default() -> None:
+    # The immune-mediated DILI axis is a stub: default immune_weight is 0 so
+    # the validated cholestasis/ATP/GSH composition is exactly preserved.
+    assert combined_stress(1.0, 0.0, 0.0, immune=1.0) == pytest.approx(1.0)
+    assert combined_stress(0.0, 1.0, 1.0, immune=1.0) == pytest.approx(0.0)
+    base = combined_stress(0.4, 0.6, 0.8, immune_weight=0.0)
+    assert combined_stress(0.4, 0.6, 0.8) == pytest.approx(base)
+    # With a nonzero immune weight the axis contributes and is normalized.
+    low = combined_stress(0.0, 1.0, 1.0, immune=1.0, immune_weight=0.25)
+    assert 0.0 < low < 1.0
+    with pytest.raises(ValueError):
+        combined_stress(0.0, 1.0, 1.0, weights=(0.0, 0.0, 0.0), immune_weight=0.0)
 
 
 def test_kill_rate_zero_and_positive() -> None:
@@ -217,6 +232,81 @@ def test_liver_solve_failure_raises() -> None:
         mock.return_value = SimpleNamespace(success=False, message="boom")
         with pytest.raises(RuntimeError, match="boom"):
             simulate_liver(np.array([0.0, 1.0]), np.array([1.0, 1.0]), 10.0)
+
+
+# ---------------------------------------------------------------------------
+# liver: pathway (ERK/MAPK) -> regeneration coupling & bilirubin ceiling
+# ---------------------------------------------------------------------------
+def test_regeneration_scale_maps_fold_change() -> None:
+    # Neutral signal keeps the baseline regeneration rate.
+    assert regeneration_scale(1.0).item() == pytest.approx(1.0)
+    # Full suppression hits the floor; saturation the ceiling; both damped.
+    assert regeneration_scale(0.0).item() == pytest.approx(0.5)
+    assert regeneration_scale(3.0).item() == pytest.approx(1.5)
+    assert regeneration_scale(1.5).item() == pytest.approx(1.25)
+    # input may be scalar or array; result is an array.
+    assert regeneration_scale(np.array([1.0, 0.0, 3.0])) == pytest.approx([1.0, 0.5, 1.5])
+
+
+def test_regeneration_scale_rejects_bad_constants() -> None:
+    with pytest.raises(ValueError, match="gain"):
+        regeneration_scale(1.0, gain=0.0)
+    with pytest.raises(ValueError, match="floor"):
+        regeneration_scale(1.0, floor=-0.1)
+    with pytest.raises(ValueError, match="ceiling"):
+        regeneration_scale(1.0, ceiling=0.4)
+
+
+def test_simulate_liver_proliferation_signal_monotonic() -> None:
+    t, c = _exposure(4000.0)
+    base = simulate_liver(t, c, 151.2)
+    neutral = simulate_liver(t, c, 151.2, proliferation_signal=np.ones_like(t))
+    # fold-change = 1.0 leaves the no-pathway dynamics unchanged.
+    assert neutral.max_dead_frac == pytest.approx(base.max_dead_frac)
+    assert neutral.regen_scale == pytest.approx(np.ones_like(neutral.t_h))
+    # Suppressing the proliferative readout slows regeneration -> more death;
+    # saturating it accelerates regeneration -> less death (monotone wiring).
+    suppressed = simulate_liver(t, c, 151.2, proliferation_signal=np.full_like(t, 0.0))
+    stimulated = simulate_liver(t, c, 151.2, proliferation_signal=np.full_like(t, 3.0))
+    assert base.max_dead_frac < suppressed.max_dead_frac
+    assert base.max_dead_frac > stimulated.max_dead_frac
+    # The clamped, damped mapping is what actually reaches the death ODE.
+    assert float(suppressed.regen_scale.min()) == pytest.approx(0.5)
+    assert float(stimulated.regen_scale.max()) == pytest.approx(1.5)
+    assert "regen_scale" in suppressed.to_series()
+
+
+def test_simulate_liver_proliferation_signal_len_mismatch() -> None:
+    t, c = _exposure(4000.0)
+    with pytest.raises(ValueError, match="proliferation_signal"):
+        simulate_liver(t, c, 151.2, proliferation_signal=np.ones(5))
+    with pytest.raises(ValueError, match="proliferation_signal"):
+        simulate_liver(t, c, 151.2, proliferation_signal=np.ones((t.size, 2)))
+
+
+def test_simulate_liver_bilirubin_ceiling() -> None:
+    t, c = _exposure(20000.0)
+    capped = simulate_liver(
+        t,
+        c,
+        151.2,
+        params=LiverParams(bili_rise_per_bsep=4.0, bili_rise_per_dead=8.0, bile_rise_max_fold=2.0),
+    )
+    uncapped = simulate_liver(
+        t,
+        c,
+        151.2,
+        params=LiverParams(bili_rise_per_bsep=4.0, bili_rise_per_dead=8.0, bile_rise_max_fold=3.0),
+    )
+    # doc/05 4.2: the reported bilirubin rise is capped at bile_rise_max_fold x
+    # ULN (the declared cholestasis ceiling) ...
+    assert capped.peak_bilirubin_uln == pytest.approx(2.0)
+    assert float(capped.bilirubin_mg_dl.max()) == pytest.approx(2.0)
+    # ... while the un-clamped dose-response still shows through above it.
+    assert uncapped.peak_bilirubin_uln > 2.0
+    assert uncapped.peak_bilirubin_uln <= 3.0
+    # Mechanical stress is not muted by the reporting ceiling.
+    assert capped.stress.max() > 0.5
 
 
 # ---------------------------------------------------------------------------

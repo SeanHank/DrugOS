@@ -47,6 +47,12 @@ class LiverParams:
     efflux-inhibition affinities from Stage-2 replace it per-compound where
     available.  Mito/redox/kill constants are class-typical calibration
     constants (low confidence, doc/06).
+
+    ``regen_pathway_*`` couple the Stage-3 pathway readout into hepatocyte
+    regeneration (the occupancy -> pathway -> organ -> phenotype chain): the
+    ERK/MAPK proliferative fold-change scales ``regeneration_1h``
+    (``regeneration_scale``), with a damped gain and a floor so an off-target
+    pathway perturbation can attenuate but never fully ablate regeneration.
     """
 
     bsep_ic50_nm: float = 3.0e5
@@ -58,6 +64,9 @@ class LiverParams:
     kill_ec50: float = 0.25
     kill_hill: float = 3.0
     regeneration_1h: float = 0.008
+    regen_pathway_gain: float = 0.5
+    regen_pathway_min: float = 0.5
+    regen_pathway_max: float = 1.5
     alt_uln_u_l: float = 40.0
     ast_uln_u_l: float = 40.0
     bilirubin_uln_mg_dl: float = 1.0
@@ -67,6 +76,7 @@ class LiverParams:
     bili_rise_per_bsep: float = 1.5
     bili_rise_per_dead: float = 1.5
     kexpz_atp: float = 0.05  # adaptive mitogenesis recovery per unit ATP shortfall
+    immune_weight: float = 0.0  # immune-mediated DILI axis; inert at 0 (default)
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +91,7 @@ class LiverStress:
     gsh_frac: float
     stress: float
     kill_rate_1h: float
+    immune: float = 0.0
 
 
 @dataclass(slots=True)
@@ -94,6 +105,7 @@ class LiverTrajectory:
     gsh_frac: NDArray
     stress: NDArray
     dead_frac: NDArray
+    regen_scale: NDArray
     alt_u_l: NDArray
     ast_u_l: NDArray
     bilirubin_mg_dl: NDArray
@@ -115,6 +127,7 @@ class LiverTrajectory:
             "gsh_frac": self.gsh_frac,
             "stress": self.stress,
             "dead_frac": self.dead_frac,
+            "regen_scale": self.regen_scale,
             "alt_U_L": self.alt_u_l,
             "ast_U_L": self.ast_u_l,
             "bilirubin_mg_dL": self.bilirubin_mg_dl,
@@ -417,14 +430,30 @@ def combined_stress(
     cholestasis: float,
     atp_frac: float,
     gsh_frac: float,
+    immune: float = 0.0,
     weights: tuple[float, float, float] = (0.5, 0.3, 0.2),
+    immune_weight: float = 0.0,
 ) -> float:
-    """Normalized 0..1 hepatocyte stress from the three toxicity axes."""
+    """Normalized 0..1 hepatocyte stress from the toxicity axes.
+
+    The fourth (immune) axis is an explicit stub: the ``immune`` hazard input
+    is weighted by ``immune_weight``, which defaults to 0 so every shipped
+    default run keeps the validated cholestasis/ATP/GSH composition exactly.
+    It is the seam for future immune-mediated DILI drivers (doc/05 4.2).
+    """
+    w_immune = max(0.0, immune_weight)
+    w_sum = sum(max(0.0, w) for w in weights) + w_immune
+    if w_sum <= 0:
+        raise ValueError("at least one stress weight must be positive")
     return max(
         0.0,
-        weights[0] * cholestasis
-        + weights[1] * max(0.0, 1.0 - atp_frac)
-        + weights[2] * max(0.0, 1.0 - gsh_frac),
+        (
+            max(0.0, weights[0]) * cholestasis
+            + max(0.0, weights[1]) * max(0.0, 1.0 - atp_frac)
+            + max(0.0, weights[2]) * max(0.0, 1.0 - gsh_frac)
+            + w_immune * max(0.0, immune)
+        )
+        / w_sum,
     )
 
 
@@ -438,9 +467,33 @@ def _kill_rate(stress: float, kill_max_1h: float, ec50: float, hill: float) -> f
     return float(kill_max_1h * s_n / (s_n + life_n))
 
 
-def _death_rhs(dead: float, stress: float, p: LiverParams) -> float:
+def regeneration_scale(
+    fold_change: NDArray | float,
+    gain: float = 0.5,
+    floor: float = 0.5,
+    ceiling: float = 1.5,
+) -> NDArray:
+    """Map an ERK proliferative fold-change onto a regeneration-rate scale.
+
+    ``fold_change`` is the Stage-3 pathway readout relative to its drug-free
+    baseline (1.0 = unperturbed signal).  Higher readout (more MAPK/ERK
+    mitogenic drive) accelerates regeneration; a drug-suppressed readout
+    attenuates it.  The linear relation is damped by ``gain`` and clamped to
+    ``[floor, ceiling]`` so a pathway perturbation can never fully ablate (or
+    infinitely potentiate) hepatocyte regeneration.
+    """
+    if gain <= 0:
+        raise ValueError("gain must be positive")
+    if floor < 0.0 or ceiling < floor:
+        raise ValueError("floor must be non-negative and ceiling >= floor")
+    fc = np.asarray(fold_change, dtype=float)
+    scale = 1.0 + gain * (fc - 1.0)
+    return np.clip(scale, floor, ceiling)
+
+
+def _death_rhs(dead: float, stress: float, p: LiverParams, regen_scale: float = 1.0) -> float:
     kill = _kill_rate(stress, p.kill_max_1h, p.kill_ec50, p.kill_hill)
-    return kill * (1.0 - dead) - p.regeneration_1h * dead
+    return kill * (1.0 - dead) - p.regeneration_1h * regen_scale * dead
 
 
 def aten_floor_factor(mito_block: float, atp_floor: float, adaptive: float) -> float:
@@ -502,6 +555,7 @@ def simulate_liver(
     n_eval: int = 601,
     rtol: float = 1e-8,
     atol: float = 1e-9,
+    proliferation_signal: NDArray | None = None,
 ) -> LiverTrajectory:
     """Integrate the four-axis liver QST model on the PBPK exposure grid.
 
@@ -512,6 +566,14 @@ def simulate_liver(
     (doc/12 row 4c, R-7).  The Mito/redox/hepatocyte-death axes remain the
     documented calibration model (DILIsym-equivalent closiness is proprietary);
     ALT/AST release follows cell death.
+
+    ``proliferation_signal`` (optional, on ``t_h``) is the Stage-3 pathway
+    readout fold-change over time; it scales the hepatocyte regeneration rate
+    via :func:`regeneration_scale`, closing the occupancy -> pathway -> organ
+    chain (a suppressed ERK/MAPK signal slows regeneration and lets the same
+    direct stress accumulate to more cell death).  The total-bilirubin rise is
+    capped at ``bile_rise_max_fold`` x ULN (the declared cholestasis ceiling;
+    the un-clamped rise above it stays in ``stress``).
     """
     p = params or LiverParams()
     t = np.asarray(t_h, dtype=float)
@@ -520,6 +582,10 @@ def simulate_liver(
         raise ValueError("t_h and c_free_mg_l must be equal-length 1-D arrays")
     if t.shape[0] < 2:
         raise ValueError("t_h needs at least two time points")
+    if proliferation_signal is not None:
+        s = np.asarray(proliferation_signal, dtype=float)
+        if s.ndim != 1 or s.shape[0] != t.shape[0]:
+            raise ValueError("proliferation_signal must be equal-length to t_h")
 
     chol_raw = simulate_gcdca_pbk(
         t,
@@ -534,15 +600,29 @@ def simulate_liver(
     )
     gsh_g = np.array([redox_state(float(cc), p.redox_ic50_nm)[1] for cc in c], dtype=float)
 
+    regen_g = (
+        np.ones_like(t, dtype=float)
+        if proliferation_signal is None
+        else regeneration_scale(
+            proliferation_signal,
+            p.regen_pathway_gain,
+            p.regen_pathway_min,
+            p.regen_pathway_max,
+        )
+    )
+
     def stress_at(sol_t: float) -> float:
         chol = float(np.interp(sol_t, t, chol_g))
         atp_frac = float(np.interp(sol_t, t, atp_g))
         gsh = float(np.interp(sol_t, t, gsh_g))
-        return combined_stress(chol, atp_frac, gsh)
+        return combined_stress(chol, atp_frac, gsh, immune=0.0, immune_weight=p.immune_weight)
+
+    def regen_at(sol_t: float) -> float:
+        return float(np.interp(sol_t, t, regen_g))
 
     def rhs(sol_t: float, y: NDArray) -> NDArray:
         dead = float(y[0])
-        return np.array([_death_rhs(dead, stress_at(sol_t), p)], dtype=float)
+        return np.array([_death_rhs(dead, stress_at(sol_t), p, regen_at(sol_t))], dtype=float)
 
     y0 = np.array([0.0], dtype=float)
     t_eval = np.linspace(t[0], t[-1], n_eval)
@@ -556,12 +636,14 @@ def simulate_liver(
     gsh: NDArray = np.interp(t_eval, t, gsh_g)
     stress: NDArray = np.array([stress_at(float(tp)) for tp in t_eval], dtype=float)
     free: NDArray = np.interp(t_eval, t, c)
+    regen_traj: NDArray = np.interp(t_eval, t, regen_g)
 
     alt: NDArray = p.alt_uln_u_l * (1.0 + p.alt_release_per_dead * dead)
     ast: NDArray = p.ast_uln_u_l * (1.0 + p.ast_release_per_dead * dead)
-    bili: NDArray = p.bilirubin_uln_mg_dl * (
+    bili_raw: NDArray = p.bilirubin_uln_mg_dl * (
         1.0 + p.bili_rise_per_bsep * chol + p.bili_rise_per_dead * dead
     )
+    bili: NDArray = np.minimum(bili_raw, p.bilirubin_uln_mg_dl * p.bile_rise_max_fold)
     peak_alt_u_l = float(np.max(alt))
     peak_ast_u_l = float(np.max(ast))
     peak_bili = float(np.max(bili))
@@ -576,6 +658,7 @@ def simulate_liver(
         gsh_frac=gsh,
         stress=stress,
         dead_frac=dead,
+        regen_scale=regen_traj,
         alt_u_l=alt,
         ast_u_l=ast,
         bilirubin_mg_dl=bili,
@@ -604,6 +687,7 @@ __all__ = [
     "liver_params_from_panel",
     "mitochondrial_block",
     "redox_state",
+    "regeneration_scale",
     "simulate_gcdca_pbk",
     "simulate_liver",
 ]

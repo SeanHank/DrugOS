@@ -18,6 +18,7 @@ from validation.cases.base import (
 )
 from validation.cases.case_admet_bbb_cns import case_admet_bbb_cns
 from validation.cases.case_benchmarks import evaluate_benchmark
+from validation.cases.case_bioavailability_f import case_bioavailability_f
 from validation.cases.case_cardiac_ap_ord import case_cardiac_ap_ord
 from validation.cases.case_cardiac_qtc import case_cardiac_qtc
 from validation.cases.case_ckdepi_2021 import case_ckdepi_2021
@@ -30,6 +31,7 @@ from validation.cases.case_liver_dose_response import case_liver_dose_response
 from validation.cases.case_mass_balance import case_mass_balance
 from validation.cases.case_occupancy_equilibrium import case_occupancy_equilibrium
 from validation.cases.case_pathway_amplification import case_pathway_amplification
+from validation.cases.case_pathway_organ_coupling import case_pathway_organ_coupling
 from validation.cases.case_prospective_fidelity import case_prospective_fidelity
 from validation.cases.case_r_bridge import case_r_bridge
 from validation.cases.case_risk_ordering import case_risk_ordering
@@ -61,6 +63,8 @@ def run_all() -> list[CaseResult]:
     results.append(case_sbml_mapk_validation())
     results.append(case_ckdepi_2021())
     results.append(case_liver_cholestasis_pbk())
+    results.append(case_pathway_organ_coupling())
+    results.append(case_bioavailability_f())
     return results
 
 

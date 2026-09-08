@@ -16,7 +16,11 @@ concentration; renal clearance acts on the unbound kidney concentration
 (stomach -> small intestine -> colon); IV input is applied to the venous side;
 SC/IM/transdermal input is applied to a ``depot`` compartment that feeds
 venous blood by first-order absorption (defaults, or user-provided
-``k_depot_absorption``).
+``k_depot_absorption``).  When a solubility limit is known (mg/mL, from the
+ADMET-AI ``logS`` for novel molecules) the small-intestine absorption flow is
+capped at the amount that can be simultaneously in solution in the lumen
+volume, so an excess dose spills forward as undissolved drug to the colon and
+feces sink (solubility-limited dissolution, doc/05 1.4).
 """
 
 from __future__ import annotations
@@ -59,7 +63,9 @@ class AbsorptionParams:
     enter a ``depot`` compartment and are absorbed first-order into venous
     blood with ``k_depot_absorption``; ``depot_bioavailability`` is the
     bioavailable fraction (the complement is lost from the depot to the
-    non-absorbed sink).
+    non-absorbed sink).  ``solubility_mg_ml`` (when set) limits the dissolved
+    amount in the small intestine to ``solubility_mg_ml * gi_volume_ml`` mg;
+    extra dose stays undissolved and transits onward to the colon/feces.
     """
 
     k_gastric_emptying: float = 1.5
@@ -70,6 +76,8 @@ class AbsorptionParams:
     k_colon_transit: float = 0.08
     k_depot_absorption: float = 0.15
     depot_bioavailability: float = 1.0
+    solubility_mg_ml: float | None = None
+    gi_volume_ml: float = 250.0
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -80,6 +88,10 @@ class AbsorptionParams:
                 raise ValueError(f"{name} must be in (0, 1]; got {value}")
             if name == "k_depot_absorption" and value <= 0.0:
                 raise ValueError(f"{name} must be positive; got {value}")
+        if self.solubility_mg_ml is not None and self.solubility_mg_ml <= 0.0:
+            raise ValueError(f"solubility_mg_ml must be positive; got {self.solubility_mg_ml}")
+        if self.gi_volume_ml <= 0.0:
+            raise ValueError(f"gi_volume_ml must be positive; got {self.gi_volume_ml}")
 
 
 def absorption_rate_from_fa(fa: float, base: float = 0.55) -> float:
@@ -205,6 +217,9 @@ class PBPKModel:
         st_out = abs_params.k_gastric_emptying * a_st
         si_resorb = abs_params.k_si_absorption * a_si
         col_resorb = abs_params.k_colon_absorption * a_col
+        if abs_params.solubility_mg_ml is not None:
+            dissolve_capacity_mg = abs_params.solubility_mg_ml * abs_params.gi_volume_ml
+            si_resorb = abs_params.k_si_absorption * min(a_si, dissolve_capacity_mg)
         dydt[self._indices["stomach"]] = -st_out - abs_params.k_stomach_absorption * a_st
         dydt[self._indices["si"]] = (
             st_out

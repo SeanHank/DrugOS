@@ -141,15 +141,20 @@ def build_markdown(results: list[CaseResult]) -> str:
         "## Tier coverage (doc/08)",
         "",
         "- Stage 1 (PK): benchmark compounds + analytic limit + mass budget + "
-        "dose-proportionality — **green**.",
+        "dose-proportionality + route-dependent bioavailability F reporting "
+        "(IV/depot/oral first-pass) + permeability/Fa-gated and logS-gated "
+        "solubility-limited oral absorption — **green**.",
         "- Stage 2 (occupancy): target-turnover equilibrium ODE vs analytic "
         "D/(D+Kd) point-wise match — **green**.",
         "- Stage 3 (pathway): 3-tier MAPK amplifier — steady-state EC50 below "
         "the receptor-Kd-equivalent signal (Emax/Hill fit, EC50<0.5) and "
         ">2x baseline amplification — **green**.",
         "- Stage 4 (organ): liver DILI dose-response (ALT/bilirubin/Hy's Law at "
-        "overdose), cardiac QTc prolongation vs the published dofetilide "
-        "Delta-QTc band, and kidney GFR/AKI KDIGO escalation — **green**.",
+        "overdose), pathway->organ regeneration coupling + bilirubin ceiling, "
+        "cardiac QTc prolongation vs the published dofetilide Delta-QTc band "
+        "+ ERK-amplification inotropy/chronotropy tone coupling, and kidney "
+        "GFR/AKI KDIGO escalation with a graded urinary KIM-1 row — "
+        "**green**.",
         "- Stage 5 clinical / report / CLI tiers: scheduled with their stage "
         "modules (see roadmap); each new model feature must add a validation "
         "case before merge (G4 rule).",

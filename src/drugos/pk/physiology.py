@@ -120,6 +120,23 @@ REF_VOLUME_L: dict[str, float] = {
 REF_ARTERIAL_BLOOD_L = 0.7
 REF_VENOUS_BLOOD_L = 1.4
 
+# Hepatic CYP450 microsomal abundances (pmol per mg microsomal protein) for a
+# reference liver: Barter et al., Clin Pharmacokinet 2013;52:963 (Table 2
+# central values, immunoquantified).  Doc/05 4.1: this is a *data* table used
+# for the cytochrome-specific clearance accounting that a future Stage-3/4
+# enzyme kinetics step consumes; it does not change today's predictions.
+CYP_ABUNDANCE_PMOL_MG: dict[str, float] = {
+    "CYP1A2": 45.0,
+    "CYP2A6": 20.0,
+    "CYP2B6": 1.4,
+    "CYP2C8": 24.0,
+    "CYP2C9": 73.0,
+    "CYP2C19": 14.0,
+    "CYP2D6": 8.0,
+    "CYP2E1": 49.0,
+    "CYP3A4": 130.0,
+}
+
 # Allometric exponents (Willmann et al. 2007 style) per organ volume.
 _VOLUME_EXPONENT: dict[str, float] = {
     "adipose": 1.0,
@@ -176,6 +193,17 @@ class HumanPhysiology:
 
     liver_microsomal_protein_mg_g: float = 40.0
     liver_mass_g: float = 1500.0
+    cyp_abundance_pmol_mg: dict[str, float] = field(
+        default_factory=lambda: dict(CYP_ABUNDANCE_PMOL_MG)
+    )
+
+    @property
+    def hepatic_cyp_content_nmol(self) -> dict[str, float]:
+        """Per-isoform liver content (nmol) = abundance x microsomal content."""
+        return {
+            iso: pmol_mg * self.liver_microsomal_protein_mg_g * self.liver_mass_g / 1000.0
+            for iso, pmol_mg in self.cyp_abundance_pmol_mg.items()
+        }
 
     @property
     def cardiac_output_ml_min(self) -> float:

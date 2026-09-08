@@ -4,6 +4,8 @@
 
 **Multiscale, mechanism-based modeling of drug response in the human body.**
 
+_All models are wrong, but some are useful. — George E. P. Box_
+
 From a SMILES string to a graded, evidence-attributed toxicity verdict — with
 the whole biology on the way rendered as equations you can read.
 
@@ -11,7 +13,7 @@ the whole biology on the way rendered as equations you can read.
 
 <p align="center">
   <a href="https://www.python.org/downloads/"><img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-4b7bec?logo=python&logoColor=fff&labelColor=232946"></a>
-  <a href="#validation--quality-gates"><img alt="Validation 25/25" src="https://img.shields.io/badge/validation-25%2F25%20green-2acc74?style=flat"></a>
+  <a href="#validation--quality-gates"><img alt="Validation 27/27" src="https://img.shields.io/badge/validation-27%2F27%20green-2acc74?style=flat"></a>
   <a href="#validation--quality-gates"><img alt="Coverage 100%" src="https://img.shields.io/badge/coverage-100%25-2acc74?style=flat"></a>
   <a href="https://github.com/"><img alt="AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-5865f2?style=flat"></a>
   <a href="doc/09-quality-gate.md"><img alt="Lint" src="https://img.shields.io/badge/lint-ruff%20+%20mypy%20--strict-9855e2?style=flat"></a>
@@ -166,7 +168,7 @@ estimator that re-derives every clearance/AUC result in the R runtime (R-1,
 agreement gated ≤ 2 %).
 
 `validation/` holds the tier ladder; `python validation/run_validation.py`
-regenerates `validation/report.md` (currently **25/25 cases green**):
+regenerates `validation/report.md` (currently **27/27 cases green**):
 
 | Tier | Case | Checks |
 |---|---|---|
@@ -189,7 +191,7 @@ runs G1–G4 and a **no-silent-fallback audit**:
 - **G2** mypy `--strict` across `src/drugos` — no errors
 - **G3** pytest with **100 % branch coverage** of `src/drugos`, no
   exclusions
-- **G4** validation suite — 25/25 green, report regenerated
+- **G4** validation suite — 27/27 green, report regenerated
 - **G5** fallback audit — every `except` handler in the package must surface an
   explicit error; silent swallowing is a hard failure (inventory pinned in
   `scripts/fallback_allowlist.json`)

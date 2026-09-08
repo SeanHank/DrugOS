@@ -7,6 +7,7 @@ import pytest
 
 from drugos.inputs.models import HumanProfile, Sex
 from drugos.pk.physiology import (
+    CYP_ABUNDANCE_PMOL_MG,
     PORTAL_DRAINING_TISSUES,
     build_human,
     glom_filtration_clearance,
@@ -149,3 +150,25 @@ def test_glom_filtration_clearance() -> None:
         glom_filtration_clearance(125.0, 0.4, fe_unchanged=-0.1)
     with pytest.raises(ValueError):
         glom_filtration_clearance(125.0, 0.4, fe_unchanged=1.1)
+
+
+def test_cyp_abundance_table_present_and_monotonic() -> None:
+    # Data table only: per-isoform hepatic abundances (Barter et al. 2013),
+    # consumed by a future enzyme-kinetics step; inert to today's model.
+    assert set(CYP_ABUNDANCE_PMOL_MG) >= {
+        "CYP1A2",
+        "CYP2C9",
+        "CYP2D6",
+        "CYP3A4",
+        "CYP2C19",
+    }
+    assert all(v > 0.0 for v in CYP_ABUNDANCE_PMOL_MG.values())
+    phys = _phys()
+    content = phys.hepatic_cyp_content_nmol
+    assert set(content) == set(CYP_ABUNDANCE_PMOL_MG)
+    for iso, pmol_mg in CYP_ABUNDANCE_PMOL_MG.items():
+        expected = pmol_mg * phys.liver_microsomal_protein_mg_g * phys.liver_mass_g / 1000.0
+        assert content[iso] == pytest.approx(expected)
+    heavy = _phys(weight_kg=90.0)
+    assert heavy.liver_mass_g == phys.liver_mass_g
+    assert set(heavy.cyp_abundance_pmol_mg) == set(CYP_ABUNDANCE_PMOL_MG)
