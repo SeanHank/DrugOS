@@ -69,13 +69,13 @@ Each stage is validated independently against its own literature before coupling
 | 9 | **Computational cost of ensemble/population simulation** | Low | Med | Numba jit on ODE RHS; aggressive cruft-free models; parallel sampling via multiprocessing |
 | 10 | **Scope creep toward "patient diagnosis"** — overclaiming clinical utility | Low | High | This is a research/modeling tool, not regulated software; clear disclaimers; outputs framed as hypothesis-generating |
 
-## 3. Regulatory & Ethics Posture (baseline 2026.9.1)
+## 3. Regulatory & Ethics Posture (baseline 2026.9.0)
 
 - DrugOS is a **mechanistic research and education platform**, not a replacement for clinical judgment or a regulated medical device.
 - All outputs are accompanied by uncertainty bands; toxicity calls are advisory and hypothesis-generating.
 - No patient-identifiable data used; human profiles are parametric and synthetic (all inputs remain arbitrarily configurable by the user, per `01-project-overview.md` section 3.1).
 
-## 4. Acceptance Criteria for Release (baseline 2026.9.1)
+## 4. Acceptance Criteria for Release (baseline 2026.9.0)
 
 1. Benchmark suite (Tier 1 set) passes stage-level and end-to-end checks with documented fold-errors.
 2. ROC ordering on a held-out compound set meets the agreed target or the deviation is documented.

@@ -16,6 +16,13 @@
   (`/usr/local/bin/R` macOS Homebrew; conda `r-base`). The standalone,
   off-gate R cross-validation harness `scripts/r_crossval/` (base-R) remains
   as an independent second estimator lane.
+  **CI note:** on GitHub Actions (ubuntu-latest) the workflow builds `rpy2`
+  from source against the apt-installed R (`pip install --no-binary=rpy2`)
+  because the manylinux cp312 wheel is API-mode-compiled against a pinned R
+  and — unlike the macOS wheel — has no working ABI fallback there, so a
+  wheel/system-R mismatch manifests in CI only. The workflow verifies the
+  bridge end-to-end (import + one `verify_pk` fit) before the gate, so an R
+  regression fails in seconds rather than 20 minutes into G3.
 - Runtime requirement: `R` / `Rscript` must be on `PATH` at import time of
   `drugos.rbridge`; verdicts stream to the `r_verify` contract block and the
   web report.
@@ -121,7 +128,7 @@ torch (cpu ok for inference)
 ## 3.1 Project Versioning
 
 - The whole project follows the `YYYY.M.V` scheme (year, month, intra-month revision starting at 0) — see `01-project-overview.md` section 0.1.
-- The version is emitted by `src/drugos/version.py` and mirrored in `pyproject.toml`; package and report versions must match. Baseline: **2026.9.1**.
+- The version is emitted by `src/drugos/version.py` and mirrored in `pyproject.toml`; package and report versions must match. Baseline: **2026.9.0**.
 
 ## 4. Data Files Layout
 

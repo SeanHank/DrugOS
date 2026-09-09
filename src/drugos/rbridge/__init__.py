@@ -122,7 +122,8 @@ def _import_r() -> Any:
     except Exception as exc:  # ImportError, OSError (missing libR), SystemExit
         raise RuntimeError(
             "R bridge unavailable: rpy2/R is a hard requirement (doc/06 §1); "
-            "install R and 'pip install rpy2'."
+            "install R and 'pip install rpy2'. Underlying error: "
+            f"{type(exc).__name__}: {exc}"
         ) from exc
 
 

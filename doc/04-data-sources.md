@@ -90,7 +90,7 @@ This document catalogs the external data sources used across the pipeline and ho
 
 - A `data.version` field accompanies every model artifact and dataset; pipeline runs record these in the run manifest so results are reproducible.
 
-## 3. Priority Ingestion Order (baseline 2026.9.1)
+## 3. Priority Ingestion Order (baseline 2026.9.0)
 
 1. **Physiology database** (OSP/Willmann tables) — unlocks Stage 1 for any human profile.
 2. **ChEMBL + DrugBank target panel** — unlocks Stage 2 for approved/reference drugs.

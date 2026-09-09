@@ -11,7 +11,7 @@ drug -> in-vivo concentration -> target binding -> signaling pathway
 |---|---|
 | Author | Sean Hank |
 | License | AGPLv3 |
-| Version | 2026.9.1 (scheme: `YYYY.M.V` — year, month, intra-month revision from 0) |
+| Version | 2026.9.0 (scheme: `YYYY.M.V` — year, month, intra-month revision from 0) |
 | Python env | `/opt/anaconda3/envs/drug_os/bin/python` |
 
 All inputs (chemical structure, route of administration, dose, complete human parameters) are **arbitrarily configurable** — see `01-project-overview.md` section 3.1.

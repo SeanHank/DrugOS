@@ -87,13 +87,13 @@ Or install a published artifact (built automatically by CI — see
 [Release Engineering](#release-engineering)):
 
 ```bash
-python -m pip install dist/drugos-2026.9.1-py3-none-any.whl
+python -m pip install dist/drugos-2026.9.0-py3-none-any.whl
 ```
 
 ## CLI
 
 ```bash
-drugos --version                    # drugos 2026.9.1
+drugos --version                    # drugos 2026.9.0
 drugos benchmarks                   # acetaminophen warfarin midazolam ciprofloxacin dofetilide
 
 # full pipeline report (markdown on stdout; json/html via --out DIR)
@@ -222,7 +222,7 @@ four gates + fallback audit, bumps the project-wide version (`YYYY.M.V`),
 rewrites the version / status numbers across `README.md` and `doc/*.md`, and
 writes `build/release_status.json`.
 
-Release → `git tag 2026.9.1 && git push --tags`. Version scheme `YYYY.M.V`.
+Release → `git tag 2026.9.0 && git push --tags`. Version scheme `YYYY.M.V`.
 
 ## Package layout
 

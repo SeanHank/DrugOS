@@ -6,7 +6,7 @@ The roadmap is phased so that each phase is independently valuable and validates
 
 **Goal:** reproducible skeleton, data ingestion, tests.
 
-- D1: Repository structure (`src/drugos`, `data/`, `tests/`, `notebooks/`), `pyproject.toml` (version `2026.9.1`, AGPLv3, author Sean Hank), `LICENSE` (AGPLv3), `src/drugos/version.py` (the `YYYY.M.V` scheme), CI lint+test. All commands run under `/opt/anaconda3/envs/drug_os/bin/python`.
+- D1: Repository structure (`src/drugos`, `data/`, `tests/`, `notebooks/`), `pyproject.toml` (version `2026.9.0`, AGPLv3, author Sean Hank), `LICENSE` (AGPLv3), `src/drugos/version.py` (the `YYYY.M.V` scheme), CI lint+test. All commands run under `/opt/anaconda3/envs/drug_os/bin/python`.
 - D2: Input parsers (SMILES canonicalization, dosing/regimen parser, human-profile parser) — all inputs arbitrarily configurable with defaults as overridable conveniences only.
 - D3: Physiology tables ingestion (OSP/Willmann-derived data) with manifest + checksum.
 - **Exit criteria:** a canonicalized molecule + a resolved human profile flow end-to-end through a stub pipeline with a validated data contract (pydantic schemas); project builds and tests pass on `/opt/anaconda3/envs/drug_os/bin/python`.
