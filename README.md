@@ -12,11 +12,11 @@ the whole biology on the way rendered as equations you can read.
 </div>
 
 <p align="center">
-  <a href="https://www.python.org/downloads/"><img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-4b7bec?logo=python&logoColor=fff&labelColor=232946"></a>
-  <a href="#validation--quality-gates"><img alt="Validation 27/27" src="https://img.shields.io/badge/validation-27%2F27%20green-2acc74?style=flat"></a>
-  <a href="#validation--quality-gates"><img alt="Coverage 100%" src="https://img.shields.io/badge/coverage-100%25-2acc74?style=flat"></a>
-  <a href="https://github.com/"><img alt="AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-5865f2?style=flat"></a>
-  <a href="doc/09-quality-gate.md"><img alt="Lint" src="https://img.shields.io/badge/lint-ruff%20+%20mypy%20--strict-9855e2?style=flat"></a>
+  <a href="https://www.python.org/downloads/"><img alt="Python 3.11+" src="https://img.shields.io/badge/Python-3.11%2B-4b7bec?logo=python&logoColor=fff&labelColor=232946"></a>
+  <a href="#validation--quality-gates"><img alt="Validation 28/28" src="https://img.shields.io/badge/Validation-28%2F28%20green-2acc74?style=flat"></a>
+  <a href="#validation--quality-gates"><img alt="Coverage 100%" src="https://img.shields.io/badge/Coverage-100%25-2acc74?style=flat"></a>
+  <a href="https://github.com/"><img alt="AGPL-3.0" src="https://img.shields.io/badge/License-AGPL--3.0-5865f2?style=flat"></a>
+  <a href="doc/09-quality-gate.md"><img alt="Lint" src="https://img.shields.io/badge/Lint-ruff%20+%20mypy%20--strict-9855e2?style=flat"></a>
 </p>
 
 ---
@@ -59,7 +59,7 @@ Pathway    signal transduction (QSP ODEs — Huang/Levchenko SBML MAPK cascade)
 
 | Layer | What it simulates | Mechanism |
 |---|---|---|
-| **Exposure** | C(t) in 83 tissue/plasma compartments | PBPK + ADMET + RDKit molecular descriptors |
+| **Exposure** | C(t) in 83 tissue/plasma compartments; permeability/Fa-gated and logS solubility-limited oral absorption; opt-in tubular secretion, Michaelis–Menten hepatic clearance, biliary excretion with enterohepatic recirculation and first-pass gut-wall extraction | PBPK + ADMET + RDKit molecular descriptors |
 | **Target** | receptor binding & occupancy kinetics | affinity-driven occupancy model |
 | **Pathway** | signal transduction after exposure | QSP ODEs (Huang/Levchenko SBML MAPK cascade, vendored) |
 | **Organ — liver** | DILI trajectory, ALT/AST/bilirubin, Hy's Law | QST dose–response + mechanistic grade; cholestasis axis anchored to the de Bruijn & Rietjens 2024 bile-acid PBK (R-7) |
@@ -87,13 +87,13 @@ Or install a published artifact (built automatically by CI — see
 [Release Engineering](#release-engineering)):
 
 ```bash
-python -m pip install dist/drugos-2026.9.0-py3-none-any.whl
+python -m pip install dist/drugos-2026.9.1-py3-none-any.whl
 ```
 
 ## CLI
 
 ```bash
-drugos --version                    # drugos 2026.9.0
+drugos --version                    # drugos 2026.9.1
 drugos benchmarks                   # acetaminophen warfarin midazolam ciprofloxacin dofetilide
 
 # full pipeline report (markdown on stdout; json/html via --out DIR)
@@ -168,7 +168,7 @@ estimator that re-derives every clearance/AUC result in the R runtime (R-1,
 agreement gated ≤ 2 %).
 
 `validation/` holds the tier ladder; `python validation/run_validation.py`
-regenerates `validation/report.md` (currently **27/27 cases green**):
+regenerates `validation/report.md` (currently **28/28 cases green**):
 
 | Tier | Case | Checks |
 |---|---|---|
@@ -191,7 +191,7 @@ runs G1–G4 and a **no-silent-fallback audit**:
 - **G2** mypy `--strict` across `src/drugos` — no errors
 - **G3** pytest with **100 % branch coverage** of `src/drugos`, no
   exclusions
-- **G4** validation suite — 27/27 green, report regenerated
+- **G4** validation suite — 28/28 green, report regenerated
 - **G5** fallback audit — every `except` handler in the package must surface an
   explicit error; silent swallowing is a hard failure (inventory pinned in
   `scripts/fallback_allowlist.json`)
@@ -222,7 +222,7 @@ four gates + fallback audit, bumps the project-wide version (`YYYY.M.V`),
 rewrites the version / status numbers across `README.md` and `doc/*.md`, and
 writes `build/release_status.json`.
 
-Release → `git tag 2026.9.0 && git push --tags`. Version scheme `YYYY.M.V`.
+Release → `git tag 2026.9.1 && git push --tags`. Version scheme `YYYY.M.V`.
 
 ## Package layout
 

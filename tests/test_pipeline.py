@@ -610,6 +610,62 @@ def test_spec_from_admet_builds_full_chain_input() -> None:
     over = pl.spec_from_admet(mol, admet, profile, plan, cl_hep_l_h=7.0, cl_renal_l_h=0.2)
     assert over.cl_hep_l_h == pytest.approx(7.0) and over.cl_renal_l_h == pytest.approx(0.2)
 
+    ext = pl.spec_from_admet(
+        mol,
+        admet,
+        profile,
+        plan,
+        cl_sec_l_h=1.5,
+        cl_bil_l_h=0.3,
+        bile_emptying_1h=0.5,
+        hepatic_vmax_mg_h=10.0,
+        hepatic_km_mg_l=2.0,
+        gut_extraction_eg=0.4,
+    )
+    assert ext.cl_sec_l_h == 1.5 and ext.cl_bil_l_h == 0.3
+    assert ext.bile_emptying_1h == 0.5
+    assert ext.hepatic_vmax_mg_h == 10.0 and ext.hepatic_km_mg_l == 2.0
+    assert ext.gut_extraction_eg == 0.4
+    assert pl._absorption_params(ext).gut_extraction_eg == 0.4
+
+
+def test_run_spec_stage1_realism_wiring(fast_warfarin: RunSpec) -> None:
+    # The pipeline threads the optional Stage-1 realism terms from the spec
+    # into the PBPK model: gut-wall extraction lowers reported oral F, and
+    # tubular secretion raises the urinary recovery.
+    base = replace(fast_warfarin, include_pathway=False, feedback_loop=0, tmax_h=48.0)
+    plain = replace(base, gut_extraction_eg=0.0, cl_sec_l_h=0.0)
+    eg = replace(base, gut_extraction_eg=0.5)
+    sec = replace(base, cl_sec_l_h=5.0)
+
+    r_plain = pl.run_pipeline(plain)
+    r_eg = pl.run_pipeline(eg)
+    r_sec = pl.run_pipeline(sec)
+
+    assert r_plain.pk.bioavailability_f is not None
+    assert r_eg.pk.bioavailability_f is not None
+    assert r_eg.pk.bioavailability_f < r_plain.pk.bioavailability_f
+    assert r_plain.pk.urine_cum_mg is not None and r_sec.pk.urine_cum_mg is not None
+    assert float(np.sum(r_sec.pk.urine_cum_mg)) > float(np.sum(r_plain.pk.urine_cum_mg))
+
+
+def test_run_spec_rejects_bad_stage1_params(fast_warfarin: RunSpec) -> None:
+    with pytest.raises(ValueError):
+        replace(fast_warfarin, cl_sec_l_h=-1.0)
+    with pytest.raises(ValueError):
+        replace(fast_warfarin, hepatic_vmax_mg_h=5.0)  # km missing
+    with pytest.raises(ValueError):
+        replace(fast_warfarin, hepatic_km_mg_l=0.0)
+    with pytest.raises(ValueError):
+        replace(fast_warfarin, hepatic_km_mg_l=-1.0, hepatic_vmax_mg_h=5.0)
+    with pytest.raises(ValueError):
+        replace(fast_warfarin, bile_emptying_1h=0.0)
+    with pytest.raises(ValueError):
+        replace(fast_warfarin, gut_extraction_eg=-0.1)
+    with pytest.raises(ValueError):
+        replace(fast_warfarin, gut_extraction_eg=1.0)
+    assert replace(fast_warfarin, bile_emptying_1h=0.5).bile_emptying_1h == 0.5
+
 
 def test_cardiac_tone_scale_clamps_and_neutral_below_baseline() -> None:
     t = np.linspace(0.0, 1.0, 11)

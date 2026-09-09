@@ -26,6 +26,7 @@ This document catalogs the external data sources used across the pipeline and ho
 | Source | Content | Stage use |
 |---|---|---|
 | OSP physiology database (from PK-Sim) | organ volumes, blood-flow rates, vascular/interstitial/cellular space volumes for human + lab animals | Stage 1 PBPK compartment parameters |
+| Barter et al. (2013) CYP immunoquantification | per-isoform hepatic microsomal abundances (CYP1A2/2A6/2B6/2C8/2C9/2C19/2D6/2E1/3A4 = `CYP_ABUNDANCE_PMOL_MG`) | Stage 1 enzyme-kinetics stage (data table; fuel for the deferred per-CYP clearance) |
 | Willmann et al. (2007) population model equations | covariate->parameter equations (age, sex, height, weight, BMI) | Human parameter resolver |
 | ICBP/Physiome data | organ-level function baselines | Stage 4-5 reference ranges |
 
@@ -89,7 +90,7 @@ This document catalogs the external data sources used across the pipeline and ho
 
 - A `data.version` field accompanies every model artifact and dataset; pipeline runs record these in the run manifest so results are reproducible.
 
-## 3. Priority Ingestion Order (baseline 2026.9.0)
+## 3. Priority Ingestion Order (baseline 2026.9.1)
 
 1. **Physiology database** (OSP/Willmann tables) — unlocks Stage 1 for any human profile.
 2. **ChEMBL + DrugBank target panel** — unlocks Stage 2 for approved/reference drugs.

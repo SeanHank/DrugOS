@@ -1,9 +1,10 @@
 # DrugOS Validation Report
 
-- Status: **PASS** (27/27 cases passed)
-- Generated: 2026-09-08 09:49 UTC
+- Status: **PASS** (28/28 cases passed)
+- Generated: 2026-09-09 06:23 UTC
 - DrugOS version: 2026.9.0
 - Interpreter: /opt/anaconda3/envs/drug_os/bin/python
+- Parallelism: parallel (8 worker processes)
 - Fold-error allowance: within 2x of the published band centre (doc/08 Tier 2, GMFE <= 2); Fa bands additionally clamp to 1.
 
 ## Results
@@ -25,7 +26,7 @@
 |  |  | t_half_h | 5.508 [3.969, 15.87] h | pass |
 |  |  | f_abs | 0.8611 [0.4472, 1] fraction | pass |
 |  |  | urine_fraction | 0.5666 [0.3571, 1] fraction | pass |
-| mass-balance (midazolam IV, no elimination) | L1 | mass_budget_rel_error | 1.066e-15 [0, 1e-06] fraction | pass |
+| mass-balance (midazolam IV, no elimination) | L1 | mass_budget_rel_error | 2.132e-15 [0, 1e-06] fraction | pass |
 | dose-proportionality (midazolam IV) | L1 | auc_40mg_over_10mg | 4 [3.6, 4.4] ratio | pass |
 | one-compartment analytic limit | L2 | auc_inf_mgh_l | 10.02 [9.5, 10.5] mg.h/L | pass |
 |  |  | t_half_h | 46.85 [41.44, 50.65] h | pass |
@@ -71,7 +72,7 @@
 | D24 prospective rerun fidelity (dofetilide QTc) | L1 | test_retest_max_risk_diff | 0 [0, 0] P(risk) | pass |
 |  |  | held_out_subject_qt_risk | 0.8361 [0.7, 0.99] P(risk) | pass |
 |  |  | held_out_verdict_disagreements | 0 [0, 0] count | pass |
-| R literature-PK cross-check (R-1) | L3 | r_literature_cl_agreement_max | 1.044e-15 [0, 0.02] fraction | pass |
+| R literature-PK cross-check (R-1) | L3 | r_literature_cl_agreement_max | 7.484e-16 [0, 0.02] fraction | pass |
 |  |  | r_verdicts_not_agree | 0 [0, 0] count | pass |
 |  |  | r_two_comp_fits | 1 [0, 5] count | pass |
 | cardiac AP cross-check (ORd/IKr) | L3 | ord_apd90_base_ms | 266.3 [200, 350] ms | pass |
@@ -117,6 +118,14 @@
 |  |  | metrics_f_abs_reported | 0.856 [0.856, 0.856] fraction | pass |
 |  |  | permeability_gated_cmax_ordering | 0.01927 [1e-06, 1e+06] mg/L | pass |
 |  |  | permeability_gated_feces_ordering | 1.217 [-1e+06, -1e-06] mg | pass |
+| Clearance & absorption realism (secretion / gut-wall / MM / EHC) | L2 | secretion_urine_fraction | 0.09037 [0.07773, 0.095] fraction | pass |
+|  |  | secretion_lifts_urine | 0.05273 [1e-06, 1] fraction | pass |
+|  |  | gut_wall_reduces_f | 0.5 [0.45, 0.55] ratio | pass |
+|  |  | mm_low_dose_slope | 17.23 [16, 24] L/h | pass |
+|  |  | mm_saturation_drops_cl | 4.212 [0, 8.615] L/h | pass |
+|  |  | ehc_mass_conservative | 1 [1, 1] flag | pass |
+|  |  | ehc_reabsorption_vs_feces | 20.75 [0, 55.09] mg | pass |
+|  |  | ehc_lifts_plasma | 223.7 [1e-06, 1e+06] mg.h/L | pass |
 
 ## Evidence levels
 
@@ -131,7 +140,7 @@ Results are graded by how much epistemic weight they carry (doc/08 §1.1-1.4 tie
 Per-level status:
 
 - **L3** (Empirically anchored (Tier 1)): 10/10 cases green.
-- **L2** (Analytic / mechanistic limit (Tier 2)): 12/12 cases green.
+- **L2** (Analytic / mechanistic limit (Tier 2)): 13/13 cases green.
 - **L1** (Internal consistency / CI (Tier 3)): 5/5 cases green.
 
 ## Notes & limitations
@@ -141,7 +150,7 @@ Per-level status:
 - **warfarin**: reported: CL=0.232 L/h, Vss(MRT)=7.04 L, t1/2=23.8 h
 - **ciprofloxacin**: reported: CL=23.5 L/h, Vss(MRT)=119 L, t1/2=2.56 h
 - **dofetilide**: reported: CL=16.9 L/h, Vss(MRT)=152 L, t1/2=5.51 h
-- **mass-balance (midazolam IV, no elimination)**: no-elimination IV bolus; end-state body mass 5 mg vs dose 5 mg (rel. err 1.07e-15)
+- **mass-balance (midazolam IV, no elimination)**: no-elimination IV bolus; end-state body mass 5 mg vs dose 5 mg (rel. err 2.13e-15)
 - **dose-proportionality (midazolam IV)**: AUC10=0.372, AUC40=1.489 mg.h/L (linearity ~4.00)
 - **one-compartment analytic limit**: V=66.4 L; analytic AUC=10.00 mg.h/L, t1/2=46.0 h
 - **occupancy equilibrium (drug=Kd)**: steady-state occupancy 0.500; analytic D/(D+Kd) = 0.5
@@ -155,7 +164,7 @@ Per-level status:
 - **Phase-6 robustness engines: D21-D24 self-consistency**: Fixed-seed D21 ensemble reproduces itself exactly (max median-band diff 0); 90% band monotone with 0 violations; D22 cohort incidence non-negative; D23 first/total indices inside [-1,1]/[0,1]; DILI risk strictly decreases with a rising IC50 (-0.4620 per +10% IC50).
 - **SC/IM depot analytic (Bateman single pool)**: V=66.4 L, ka=0.3/h, F=0.9; analytic Cmax=0.123 mg/L, Tmax=12.6 h, AUC=18.0 mg.h/L
 - **D24 prospective rerun fidelity (dofetilide QTc)**: Repeated identical runs agree to 0.0e+00 in risk and keep verdict 'High composite risk (53%, driver qt)'; an independent female-70 profile also sustains the high-QT regime (dofetilide QT 0.836, driver qt).  Basis: reproducibility is the precondition of the runbook; the QTc band itself is anchored by the L3 dofetilide Tier-1 case (see case_cardiac_qtc).
-- **R literature-PK cross-check (R-1)**: worst |CL_r - CL_py|/CL_py over midazolam / acetaminophen / warfarin / ciprofloxacin / dofetilide: 1.04e-15 (acetaminophen); midazolam=r:agree / acetaminophen=r:agree / warfarin=r:agree / ciprofloxacin=r:agree / dofetilide=r:agree; method-of-residuals two-comp fits: 1/5
+- **R literature-PK cross-check (R-1)**: worst |CL_r - CL_py|/CL_py over midazolam / acetaminophen / warfarin / ciprofloxacin / dofetilide: 7.48e-16 (ciprofloxacin); midazolam=r:agree / acetaminophen=r:agree / warfarin=r:agree / ciprofloxacin=r:agree / dofetilide=r:agree; method-of-residuals two-comp fits: 1/5
 - **cardiac AP cross-check (ORd/IKr)**: ORd 2011 (myokit, endo, 50 pre-paces @1 Hz): baseline APD90=266.3 ms; delta-APD90 @25% block=47.1 ms, @50% block (measured-IC50 concentration)=114.8 ms, control (0% block)=0.0000 ms; monotone +67.7 ms between block levels; warfarin control confirmed zero prolongation (matches encoder ordering warfarin 0.017 ms << dofetilide 20.2 ms)
 - **ADMET-AI BBB_Martins -> CNS partition (R-4)**: BBB_Martins P=0.9 -> kpu_brain 1.00, P=0.1 -> 0.20 (source: ADMET-AI BBB_Martins head); restricted brain peak = 20% of penetrant; CNS grades 0 <= 0; baseline (no ADMET-AI) kpu=1.00 untouched — benchmark anchors unchanged
 - **Huang/Levchenko SBML MAPK cascade integration (R-5)**: parsed 22 species / 20 reactions from BIOMD0000000009 (volume 4.0e-12 L); drug-free PP_K steady state 0.982; occupancy monotone 0.6->0.917, 0.9->0.005, 1.0->0.000; full-signal fold-change 0.000 (inhibition).
@@ -163,6 +172,7 @@ Per-level status:
 - **Bile-acid cholestasis PBK (R-7)**: de Bruijn & Rietjens (2024) bile-acid PBK reproduced at 1 uM free-hepatic exposure: ritonavir-class (IC50 0.2 uM) fold 10.32x / stress 1.00 (cholestatic), itraconazole-class (IC50 10 mM) fold 1.00x (benign); Ki=IC50/2 pinned; organ cholestasis 1.00 matches the submodel.
 - **pathway->organ regeneration coupling + bilirubin ceiling**: at 0.1966 suppressed vs 0.1927 baseline vs 0.1892 stimulated max dead fraction with regen_scale clamped to [0.50, 1.50]; bilirubin capped at 2.00xULN while uncapped hits 3.00xULN. The blocked ERK/proliferation readout attenuates (never ablates) hepatocyte regeneration, tipping the same direct stress into more cell death (occupancy -> pathway -> organ -> phenotype).
 - **bioavailability F reporting (IV/depot/oral first-pass)**: I F=1.000, depot F=0.700, oral F=0.8560; oral/IV AUC ratio=0.8607 while CL=0.5 L/h. The unabsorbed colon-transit fraction leaves the oral body and first-pass hepatic extraction is inside the reported F. Permeability-gated absorption: fa 0.95 peaks above fa 0.3 with the low-fa molecules losing more to the colon/feces sink.
+- **Clearance & absorption realism (secretion / gut-wall / MM / EHC)**: V=66.4 L single pool; secretion urine_frac=0.090 vs 0.086 analytic; gut-wall F ratio=0.500; MM CL low=17.23/high=4.21 L/h; EHC feces fast=20.75/slow=55.09 mg
 
 ## Tier-1 geometric-mean fold error (L3 asserted metrics)
 
@@ -176,7 +186,7 @@ Per-level status:
 
 ## Tier coverage (doc/08)
 
-- Stage 1 (PK): benchmark compounds + analytic limit + mass budget + dose-proportionality + route-dependent bioavailability F reporting (IV/depot/oral first-pass) + permeability/Fa-gated and logS-gated solubility-limited oral absorption — **green**.
+- Stage 1 (PK): benchmark compounds + analytic limit + mass budget + dose-proportionality + route-dependent bioavailability F reporting (IV/depot/oral first-pass) + permeability/Fa-gated and logS-gated solubility-limited oral absorption + tunable tubular secretion, gut-wall first-pass extraction, saturable (MM) hepatic clearance and biliary/enterohepatic recirculation — **green**.
 - Stage 2 (occupancy): target-turnover equilibrium ODE vs analytic D/(D+Kd) point-wise match — **green**.
 - Stage 3 (pathway): 3-tier MAPK amplifier — steady-state EC50 below the receptor-Kd-equivalent signal (Emax/Hill fit, EC50<0.5) and >2x baseline amplification — **green**.
 - Stage 4 (organ): liver DILI dose-response (ALT/bilirubin/Hy's Law at overdose), pathway->organ regeneration coupling + bilirubin ceiling, cardiac QTc prolongation vs the published dofetilide Delta-QTc band + ERK-amplification inotropy/chronotropy tone coupling, and kidney GFR/AKI KDIGO escalation with a graded urinary KIM-1 row — **green**.

@@ -5,13 +5,16 @@ Runs every validation case and regenerates ``validation/report.md`` from the
 same code path that produced the numbers (single source of truth).  Exits
 non-zero if any case fails.
 
-Usage:  python validation/run_validation.py
+Usage:  python validation/run_validation.py [--jobs N]
+                            (-j 0 runs sequentially; default: min(CPU, 8))
 """
 
 from __future__ import annotations
 
+import argparse
+import datetime as _dt
+import os
 import sys
-from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -27,7 +30,7 @@ from validation.cases import (  # noqa: E402
     EVIDENCE_ORDER,
     CaseResult,
     MetricResult,
-    run_all,
+    run_parallel,
 )
 
 from drugos.version import __version__  # noqa: E402
@@ -57,17 +60,19 @@ def fold_error(results: list[CaseResult], benchmark: str) -> float | None:
     return float(np.exp(np.mean(np.log(folds))))
 
 
-def build_markdown(results: list[CaseResult]) -> str:
+def build_markdown(results: list[CaseResult], jobs: int) -> str:
     passed = sum(1 for c in results if c.passed)
     total = len(results)
     status = "PASS" if passed == total else "FAIL"
+    mode = f"parallel ({jobs} worker processes)" if jobs else "sequential"
     lines: list[str] = [
         "# DrugOS Validation Report",
         "",
         f"- Status: **{status}** ({passed}/{total} cases passed)",
-        f"- Generated: {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}",
+        f"- Generated: {_dt.datetime.now(_dt.UTC).strftime('%Y-%m-%d %H:%M UTC')}",
         f"- DrugOS version: {__version__}",
         f"- Interpreter: {sys.executable}",
+        f"- Parallelism: {mode}",
         f"- Fold-error allowance: within {FOLD_ALLOWANCE:.0f}x of the published"
         " band centre (doc/08 Tier 2, GMFE <= 2); Fa bands additionally clamp to 1.",
         "",
@@ -143,7 +148,9 @@ def build_markdown(results: list[CaseResult]) -> str:
         "- Stage 1 (PK): benchmark compounds + analytic limit + mass budget + "
         "dose-proportionality + route-dependent bioavailability F reporting "
         "(IV/depot/oral first-pass) + permeability/Fa-gated and logS-gated "
-        "solubility-limited oral absorption — **green**.",
+        "solubility-limited oral absorption + tunable tubular secretion, "
+        "gut-wall first-pass extraction, saturable (MM) hepatic clearance and "
+        "biliary/enterohepatic recirculation — **green**.",
         "- Stage 2 (occupancy): target-turnover equilibrium ODE vs analytic "
         "D/(D+Kd) point-wise match — **green**.",
         "- Stage 3 (pathway): 3-tier MAPK amplifier — steady-state EC50 below "
@@ -176,12 +183,22 @@ def build_markdown(results: list[CaseResult]) -> str:
     return "\n".join(lines)
 
 
-def main() -> int:
-    results = run_all()
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Regenerate validation/report.md (G4).")
+    parser.add_argument(
+        "-j",
+        "--jobs",
+        type=int,
+        default=min(os.cpu_count() or 1, 8),
+        help="parallel worker processes (0 = sequential; default: min(CPU, 8))",
+    )
+    opts = parser.parse_args(argv)
+    jobs = opts.jobs
+    results = run_parallel(jobs)
     for c in results:
         if not c.metrics:
             print(f"[FAIL] {c.benchmark}: no metrics produced")
-    markdown = build_markdown(results)
+    markdown = build_markdown(results, jobs)
     REPORT_PATH.write_text(markdown, encoding="utf-8")
     print(f"wrote {REPORT_PATH}")
     for c in results:

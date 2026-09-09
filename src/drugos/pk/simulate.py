@@ -31,10 +31,11 @@ def bioavailable_fraction(
     the depot availability fraction directly (they bypass the portal vein).
     For oral dosing the absorbed fraction (dose minus the colon-transit feces
     sink) reaches the liver through the portal blood and suffers a
-    well-stirred first-pass hepatic extraction ``Eh = CL_h/(Q_h + CL_h)``, so
-    ``F = Fa * (1 - Eh)``.  The PBPK model already routes absorbed oral drug
-    into the liver compartment, so this is the reported first-pass-corrected
-    bioavailability.
+    well-stirred first-pass hepatic extraction ``Eh = CL_h/(Q_h + CL_h)`` and
+    (when set) a first-pass intestinal extraction ``Eg`` from the absorbed
+    flux, so ``F = Fa * (1 - Eh) * (1 - Eg)``.  The PBPK model already routes
+    absorbed oral drug into the liver compartment, so this is the reported
+    first-pass-corrected bioavailability.
     """
     if route in _IV_ROUTES:
         return 1.0
@@ -45,7 +46,8 @@ def bioavailable_fraction(
         absorbed = 1.0 - float(feces_cum_mg[-1]) / dose_mg
     qh = model.physiology.organ_flow["liver"] * 60.0  # L/h
     eh = model.cl_hep_l_h / (qh + model.cl_hep_l_h) if (qh + model.cl_hep_l_h) > 0 else 0.0
-    value = max(0.0, min(1.0, absorbed * (1.0 - eh)))
+    eg = float(model.absorption.gut_extraction_eg)
+    value = max(0.0, min(1.0, absorbed * (1.0 - eh) * (1.0 - eg)))
     return float(value)
 
 

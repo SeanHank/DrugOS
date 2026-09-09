@@ -11,16 +11,28 @@ Mass balance per tissue (amounts in mg, times in hours):
 
 with C_vbt = C_t*BP/Kp_t (Kp_t = tissue-to-plasma total ratio) and
 C_unbound,t = C_t/Kpu_t.  Liver clearance acts on the unbound liver
-concentration; renal clearance acts on the unbound kidney concentration
-(filtration of free drug).  Oral input uses an ACAT-lite first-order transit
+concentration (optionally as a saturable Vmax/Km term); renal clearance acts
+on the unbound kidney concentration (filtration of free drug, optionally plus
+an active tubular-secretion term ``cl_sec``).  Biliary secretion
+(``cl_bil``) moves unbound parent from the liver into a bile compartment that
+empties (``k_bile_emptying``) into the small-intestine lumen: that mass is
+then subject to the normal SI absorption/reabsorption kinetics, so a fraction
+re-enters the portal vein (enterohepatic recirculation) and the rest reaches
+the feaces sink.  Oral input uses an ACAT-lite first-order transit
 (stomach -> small intestine -> colon); IV input is applied to the venous side;
 SC/IM/transdermal input is applied to a ``depot`` compartment that feeds
 venous blood by first-order absorption (defaults, or user-provided
-``k_depot_absorption``).  When a solubility limit is known (mg/mL, from the
+``k_depot_absorption``).  First-pass intestinal (gut-wall) extraction
+``gut_extraction_eg`` removes a fraction of the SI-absorbed flux before it
+enters the portal blood.  When a solubility limit is known (mg/mL, from the
 ADMET-AI ``logS`` for novel molecules) the small-intestine absorption flow is
 capped at the amount that can be simultaneously in solution in the lumen
 volume, so an excess dose spills forward as undissolved drug to the colon and
-feces sink (solubility-limited dissolution, doc/05 1.4).
+feces sink (solubility-limited dissolution, doc/05 1.4).  Every realistic
+extension (secretory/reabsorptive ``cl_sec``, MM hepatic ``hepatic_vmax``/
+``hepatic_km``, biliary ``cl_bil``/``k_bile_emptying``, gut-wall
+``gut_extraction_eg``) is off by default, so baseline runs reproduce the
+validated linear-clearance behavior exactly.
 """
 
 from __future__ import annotations
@@ -78,6 +90,7 @@ class AbsorptionParams:
     depot_bioavailability: float = 1.0
     solubility_mg_ml: float | None = None
     gi_volume_ml: float = 250.0
+    gut_extraction_eg: float = 0.0
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -92,6 +105,8 @@ class AbsorptionParams:
             raise ValueError(f"solubility_mg_ml must be positive; got {self.solubility_mg_ml}")
         if self.gi_volume_ml <= 0.0:
             raise ValueError(f"gi_volume_ml must be positive; got {self.gi_volume_ml}")
+        if not (0.0 <= self.gut_extraction_eg <= 0.9):
+            raise ValueError(f"gut_extraction_eg must be in [0, 0.9]; got {self.gut_extraction_eg}")
 
 
 def absorption_rate_from_fa(fa: float, base: float = 0.55) -> float:
@@ -110,6 +125,11 @@ class PBPKModel:
     fup: float
     cl_hep_l_h: float = 0.0
     cl_renal_l_h: float = 0.0
+    cl_sec_l_h: float = 0.0
+    hepatic_vmax_mg_h: float | None = None
+    hepatic_km_mg_l: float | None = None
+    cl_bil_l_h: float = 0.0
+    k_bile_emptying_1h: float = 1.0
     dose_plan: DosePlan = field(default_factory=DosePlan)
     absorption: AbsorptionParams = field(default_factory=AbsorptionParams)
 
@@ -133,7 +153,8 @@ class PBPKModel:
         self._indices["urine"] = idx + 3
         self._indices["feces"] = idx + 4
         self._indices["depot"] = idx + 5
-        self._n_state = idx + 6
+        self._indices["bile"] = idx + 6
+        self._n_state = idx + 7
         self._vc_tissues = [
             t for t in self.order if t not in PORTAL_DRAINING_TISSUES and t != "lung"
         ]
@@ -205,9 +226,14 @@ class PBPKModel:
         c_vbsp = self._venous_blood_out(y, "spleen")
         c_vbh = self._venous_blood_out(y, "liver")
         hepatic_in = qh_art * c_ab + qg * c_vbg + qsp * c_vbsp
-        c_pu_h = c_liver = self._tissue_concentration(y, "liver")
-        c_pu_h = c_liver / kpu["liver"]
-        dydt[self._indices["liver"]] = hepatic_in - qh * c_vbh - self.cl_hep_l_h * c_pu_h
+        c_pu_h = self._tissue_concentration(y, "liver") / kpu["liver"]
+        if self.hepatic_vmax_mg_h is not None and self.hepatic_km_mg_l is not None:
+            hepatic_elim = self.hepatic_vmax_mg_h * c_pu_h / (self.hepatic_km_mg_l + c_pu_h)
+        else:
+            hepatic_elim = self.cl_hep_l_h * c_pu_h
+        dydt[self._indices["liver"]] = (
+            hepatic_in - qh * c_vbh - hepatic_elim - self.cl_bil_l_h * c_pu_h
+        )
 
         # Absorption compartments.
         abs_params = self.absorption
@@ -231,7 +257,18 @@ class PBPKModel:
             abs_params.k_si_transit * a_si - col_resorb - abs_params.k_colon_transit * a_col
         )
         dydt[self._indices["feces"]] = abs_params.k_colon_transit * a_col
-        dydt[self._indices["liver"]] += si_resorb + col_resorb
+        portal_si = (1.0 - abs_params.gut_extraction_eg) * si_resorb
+        dydt[self._indices["liver"]] += portal_si + col_resorb
+
+        # Biliary excretion & enterohepatic recirculation: unbound parent is
+        # secreted into a bile pool that empties into the SI lumen, where it is
+        # then subject to the regular absorption/reabsorption kinetics (so the
+        # reabsorbed fraction re-enters the portal vein and the rest transits
+        # to the colon/feces).
+        a_bile = y[self._indices["bile"]]
+        bile_out = self.k_bile_emptying_1h * a_bile
+        dydt[self._indices["bile"]] = self.cl_bil_l_h * c_pu_h - bile_out
+        dydt[self._indices["si"]] += bile_out
 
         # Depot (SC/IM/transdermal): first-order absorption into venous blood.
         depot = y[self._indices["depot"]]
@@ -240,9 +277,10 @@ class PBPKModel:
         dydt[self._indices["venous"]] += depot_out * abs_params.depot_bioavailability
         dydt[self._indices["feces"]] += depot_out * (1.0 - abs_params.depot_bioavailability)
 
-        # Kidney: filtration of free drug into urine.
+        # Kidney: filtration of free drug into urine, plus optional active
+        # tubular secretion (cl_sec) of the unbound kidney drug.
         c_pu_k = self._tissue_concentration(y, "kidney") / kpu["kidney"]
-        urine_rate = self.cl_renal_l_h * c_pu_k
+        urine_rate = (self.cl_renal_l_h + self.cl_sec_l_h) * c_pu_k
         dydt[self._indices["kidney"]] = (flows["kidney"] * 60.0) * (
             c_ab - self._venous_blood_out(y, "kidney")
         ) - urine_rate

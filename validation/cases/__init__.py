@@ -1,12 +1,19 @@
 """Validation case library (doc/08): Tier-1 benchmarks + stage analytic/CI cases.
 
-Each case declares an ``EvidenceLevel`` (see ``base.py``) grading how much
-epistemic weight its pass carries — from empirically anchored (L3) to merely
-numerically self-consistent (L1).  ``run_all`` returns every case in suite
-order; the runner regenerates ``validation/report.md``.
+"can be intellectually staged in a defined pipeline order, and ``run_all`` /
+``run_parallel`` return every case in suite order; the runner regenerates
+``validation/report.md``.
 """
 
 from __future__ import annotations
+
+import os
+import pickle
+import sys
+from collections.abc import Callable
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
+from typing import Any
 
 from validation.benchmarks import BENCHMARKS
 from validation.cases.base import (
@@ -22,6 +29,7 @@ from validation.cases.case_bioavailability_f import case_bioavailability_f
 from validation.cases.case_cardiac_ap_ord import case_cardiac_ap_ord
 from validation.cases.case_cardiac_qtc import case_cardiac_qtc
 from validation.cases.case_ckdepi_2021 import case_ckdepi_2021
+from validation.cases.case_clearance_mechanisms import case_clearance_mechanisms
 from validation.cases.case_clinical_grading import case_clinical_grading
 from validation.cases.case_corpus_calibration import case_corpus_calibration
 from validation.cases.case_dose_proportionality import case_dose_proportionality
@@ -40,32 +48,70 @@ from validation.cases.case_sbml_mapk_validation import case_sbml_mapk_validation
 from validation.cases.case_sc_im_depot import case_sc_im_depot
 from validation.cases.case_single_pool_analytic import case_single_pool_analytic
 
+_ANALYTIC_CASES: tuple[Callable[[], CaseResult], ...] = (
+    case_mass_balance,
+    case_dose_proportionality,
+    case_single_pool_analytic,
+    case_occupancy_equilibrium,
+    case_pathway_amplification,
+    case_liver_dose_response,
+    case_cardiac_qtc,
+    case_kidney_gfr,
+    case_clinical_grading,
+    case_corpus_calibration,
+    case_risk_ordering,
+    case_robustness_sanity,
+    case_sc_im_depot,
+    case_prospective_fidelity,
+    case_r_bridge,
+    case_cardiac_ap_ord,
+    case_admet_bbb_cns,
+    case_sbml_mapk_validation,
+    case_ckdepi_2021,
+    case_liver_cholestasis_pbk,
+    case_pathway_organ_coupling,
+    case_bioavailability_f,
+    case_clearance_mechanisms,
+)
+
+_Step = tuple[Callable[..., CaseResult], tuple[Any, ...]]
+
+
+def _suite_steps() -> list[_Step]:
+    steps: list[_Step] = [(evaluate_benchmark, (b,)) for b in BENCHMARKS]
+    for case in _ANALYTIC_CASES:
+        steps.append((case, ()))
+    return steps
+
+
+def _run_step(step: _Step) -> CaseResult:
+    fn, args = step
+    return fn(*args)
+
 
 def run_all() -> list[CaseResult]:
-    results: list[CaseResult] = [evaluate_benchmark(b) for b in BENCHMARKS]
-    results.append(case_mass_balance())
-    results.append(case_dose_proportionality())
-    results.append(case_single_pool_analytic())
-    results.append(case_occupancy_equilibrium())
-    results.append(case_pathway_amplification())
-    results.append(case_liver_dose_response())
-    results.append(case_cardiac_qtc())
-    results.append(case_kidney_gfr())
-    results.append(case_clinical_grading())
-    results.append(case_corpus_calibration())
-    results.append(case_risk_ordering())
-    results.append(case_robustness_sanity())
-    results.append(case_sc_im_depot())
-    results.append(case_prospective_fidelity())
-    results.append(case_r_bridge())
-    results.append(case_cardiac_ap_ord())
-    results.append(case_admet_bbb_cns())
-    results.append(case_sbml_mapk_validation())
-    results.append(case_ckdepi_2021())
-    results.append(case_liver_cholestasis_pbk())
-    results.append(case_pathway_organ_coupling())
-    results.append(case_bioavailability_f())
-    return results
+    return [_run_step(step) for step in _suite_steps()]
+
+
+def run_parallel(jobs: int | None = None) -> list[CaseResult]:
+    """Run the full suite, evaluating independent cases in separate processes.
+
+    ``jobs == 0`` forces the sequential path.  Each case is a self-contained
+    top-level callable (left to right in suite order), so the results come
+    back in the same order as ``run_all``.  Scheduler failures fall back to a
+    sequential re-run instead of silently truncating the report.
+    """
+    steps = _suite_steps()
+    if jobs == 0:
+        return [_run_step(step) for step in steps]
+    n = jobs or min(max(os.cpu_count() or 1, 1), 8)
+    try:
+        with ProcessPoolExecutor(max_workers=n) as executor:
+            return list(executor.map(_run_step, steps))
+    except (OSError, BrokenProcessPool, pickle.PicklingError, RuntimeError) as exc:
+        msg = f"[validation] parallel scheduler failed ({exc!r}); falling back to sequential"
+        print(msg, file=sys.stderr)
+        return [_run_step(step) for step in steps]
 
 
 __all__ = [
@@ -76,4 +122,5 @@ __all__ = [
     "EvidenceLevel",
     "MetricResult",
     "run_all",
+    "run_parallel",
 ]

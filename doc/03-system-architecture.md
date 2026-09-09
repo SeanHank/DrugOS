@@ -62,7 +62,7 @@ DrugOS is a **six-stage pipeline** of coupled models. The pipeline follows the t
 
 ### 2.2 Stage 1 — PK/PD Parameterization + PBPK
 
-- **ADME predictor** — ADMET-AI GNN (Chemprop-RDKit) + RDKit descriptors. Outputs: solubility, permeability class, plasma-protein binding (fraction unbound), intrinsic clearance (metabolic stability), half-life, bioavailability flags.
+- **ADME predictor** — ADMET-AI GNN (Chemprop-RDKit) + RDKit descriptors. Outputs: solubility, permeability class, plasma-protein binding (fraction unbound), intrinsic clearance (metabolic stability), half-life, bioavailability flags. Predicted signals are consumed by the PBPK layer directly: `fup_plasma` (binding), `cl_int_hep_ml_min_kg` (hepatic clearance), HIA or `bioavailable_Ma` (the oral fraction-absorbed gate, `_admet_fa`), and `logS` (a solubility-limited dissolution cap on the intestinal lumen pool, `AbsorptionParams.solubility_mg_ml`). Per-isoform hepatic abundances (`CYP_ABUNDANCE_PMOL_MG`, Barter et al. 2013) are carried on the physiology for the deferred enzyme-kinetics stage.
 - **PBPK model builder** — constructs the whole-body compartment graph (blood/plasma, liver, kidney, gut, lung, heart, brain, muscle, adipose, skin, remainder) with blood-flow distribution, tissue-partitioning (Rodgers/Rowland or Poulin-Theil method), and first-order absorption for oral or bolus/infusion input for IV.
 - **Simulation engine** — ODE solver (SciPy LSODA) over the coupled compartment system; optionally delegate to the OSP engine (PK-Sim on Windows/WINE) or re-implement the same equations in Python.
 

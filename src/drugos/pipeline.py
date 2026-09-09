@@ -83,6 +83,12 @@ class RunSpec:
     feedback_loop: int = 0
     sc_im_ka_per_h: float | None = None
     fa: float | None = None
+    cl_sec_l_h: float = 0.0
+    cl_bil_l_h: float = 0.0
+    bile_emptying_1h: float = 1.0
+    hepatic_vmax_mg_h: float | None = None
+    hepatic_km_mg_l: float | None = None
+    gut_extraction_eg: float = 0.0
     name: str = "compound"
 
     def __post_init__(self) -> None:
@@ -102,6 +108,21 @@ class RunSpec:
             raise ValueError("dili_ic50_nm must be positive")
         if self.cns_ic50_nm is not None and self.cns_ic50_nm <= 0:
             raise ValueError("cns_ic50_nm must be positive")
+        for label, value in (
+            ("cl_sec_l_h", self.cl_sec_l_h),
+            ("cl_bil_l_h", self.cl_bil_l_h),
+            ("bile_emptying_1h", self.bile_emptying_1h),
+        ):
+            if value < 0 or value != value:  # NaN guard
+                raise ValueError(f"{label} must be non-negative; got {value}")
+        if self.bile_emptying_1h <= 0:
+            raise ValueError("bile_emptying_1h must be positive")
+        if (self.hepatic_vmax_mg_h is None) != (self.hepatic_km_mg_l is None):
+            raise ValueError("hepatic_vmax_mg_h and hepatic_km_mg_l must be set together")
+        if self.hepatic_km_mg_l is not None and self.hepatic_km_mg_l <= 0:
+            raise ValueError("hepatic_km_mg_l must be positive")
+        if not (0.0 <= self.gut_extraction_eg <= 0.9):
+            raise ValueError("gut_extraction_eg must be in [0, 0.9]")
 
 
 @dataclass(slots=True)
@@ -417,6 +438,11 @@ def _panel_model(spec: RunSpec) -> PBPKModel:
         fup=spec.fup,
         cl_hep_l_h=spec.cl_hep_l_h,
         cl_renal_l_h=spec.cl_renal_l_h,
+        cl_sec_l_h=spec.cl_sec_l_h,
+        hepatic_vmax_mg_h=spec.hepatic_vmax_mg_h,
+        hepatic_km_mg_l=spec.hepatic_km_mg_l,
+        cl_bil_l_h=spec.cl_bil_l_h,
+        k_bile_emptying_1h=spec.bile_emptying_1h,
         dose_plan=spec.dose_plan,
         absorption=absorption,
     )
@@ -463,20 +489,22 @@ def _absorption_params(spec: RunSpec) -> AbsorptionParams:
         return AbsorptionParams(k_depot_absorption=spec.sc_im_ka_per_h)
     has_oral = any(ev.route is Route.ORAL for ev in spec.dose_plan.events)
     if not has_oral:
-        return AbsorptionParams()
+        return AbsorptionParams(gut_extraction_eg=spec.gut_extraction_eg)
     solubility = _admet_solubility_mg_ml(spec.admet, spec.mw)
     if spec.fa is not None:
         return AbsorptionParams(
             k_si_absorption=absorption_rate_from_fa(spec.fa),
             solubility_mg_ml=solubility,
+            gut_extraction_eg=spec.gut_extraction_eg,
         )
     admet_fa = _admet_fa(spec.admet)
     if admet_fa is not None:
         return AbsorptionParams(
             k_si_absorption=absorption_rate_from_fa(admet_fa),
             solubility_mg_ml=solubility,
+            gut_extraction_eg=spec.gut_extraction_eg,
         )
-    return AbsorptionParams()
+    return AbsorptionParams(gut_extraction_eg=spec.gut_extraction_eg)
 
 
 def _organ_state(
@@ -994,6 +1022,12 @@ def spec_from_admet(
     cl_renal_l_h: float | None = None,
     include_pathway: bool = True,
     sc_im_ka_per_h: float | None = None,
+    cl_sec_l_h: float = 0.0,
+    cl_bil_l_h: float = 0.0,
+    bile_emptying_1h: float = 1.0,
+    hepatic_vmax_mg_h: float | None = None,
+    hepatic_km_mg_l: float | None = None,
+    gut_extraction_eg: float = 0.0,
 ) -> RunSpec:
     """Build a ``RunSpec`` for a novel molecule entirely from ADMET-AI.
 
@@ -1039,6 +1073,12 @@ def spec_from_admet(
         fa=fa,
         include_pathway=include_pathway,
         sc_im_ka_per_h=sc_im_ka_per_h,
+        cl_sec_l_h=cl_sec_l_h,
+        cl_bil_l_h=cl_bil_l_h,
+        bile_emptying_1h=bile_emptying_1h,
+        hepatic_vmax_mg_h=hepatic_vmax_mg_h,
+        hepatic_km_mg_l=hepatic_km_mg_l,
+        gut_extraction_eg=gut_extraction_eg,
     )
 
 

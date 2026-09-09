@@ -120,6 +120,91 @@ def test_absorption_params_reject_bad_solubility() -> None:
         AbsorptionParams(solubility_mg_ml=-1.0)
     with pytest.raises(ValueError):
         AbsorptionParams(gi_volume_ml=0.0)
+    with pytest.raises(ValueError):
+        AbsorptionParams(gut_extraction_eg=-0.1)
+    with pytest.raises(ValueError):
+        AbsorptionParams(gut_extraction_eg=1.0)
+
+
+def test_renal_tubular_secretion_raises_urine_fraction() -> None:
+    # Active tubular secretion (``cl_sec``, OAT/OCT-style) adds to the
+    # glomerular-filtration term on the unbound kidney dose, increasing the
+    # fraction of an IV dose recovered in urine over pure filtration.
+    base = _model(route=Route.IV_BOLUS, amount_mg=100.0, cl_renal=1.0)
+    sec = _model(route=Route.IV_BOLUS, amount_mg=100.0, cl_renal=1.0)
+    sec.cl_sec_l_h = 2.0
+    r_base = simulate_pbpk(base, tmax_h=48.0, n_eval=200)
+    r_sec = simulate_pbpk(sec, tmax_h=48.0, n_eval=200)
+    f_base = float(r_base.urine_cum_mg[-1]) / 100.0
+    f_sec = float(r_sec.urine_cum_mg[-1]) / 100.0
+    assert f_sec > f_base
+
+
+def test_gut_wall_extraction_reduces_oral_bioavailability() -> None:
+    # First-pass intestinal extraction removes a fraction of the SI-absorbed
+    # flux before the portal blood (enterocyte CYP/efflux loss), so the
+    # reported F falls by (1 - Eg) with the same absorbed mass and hepatic Eh.
+    dose_mg = 100.0
+    m0 = _model(route=Route.ORAL, amount_mg=dose_mg, cl_hep=0.5)
+    m0.absorption = AbsorptionParams(k_si_absorption=0.55)
+    m5 = _model(route=Route.ORAL, amount_mg=dose_mg, cl_hep=0.5)
+    m5.absorption = AbsorptionParams(k_si_absorption=0.55, gut_extraction_eg=0.5)
+    r0 = simulate_pbpk(m0, tmax_h=48.0, n_eval=200)
+    r5 = simulate_pbpk(m5, tmax_h=48.0, n_eval=200)
+    assert r5.bioavailability_f is not None and r0.bioavailability_f is not None
+    assert r5.bioavailability_f < r0.bioavailability_f
+    assert math.isclose(r5.bioavailability_f, r0.bioavailability_f * 0.5, rel_tol=0.05)
+    assert float(np.max(r5.plasma_total)) < float(np.max(r0.plasma_total))
+
+
+def test_saturable_hepatic_clearance_is_dose_dependent() -> None:
+    # With a Vmax/Km (Michaelis-Menten) hepatic term the intrinsic clearance
+    # falls as the unbound liver concentration approaches Km, so the apparent
+    # clearance drops and AUC above the low-dose linear regime is
+    # super-proportional.  The linear `cl_hep` twin stays dose-proportional.
+    vmax, km = 20.0, 1.0  # mg/h, mg/L  ->  linear slope CL_0 = Vmax/Km = 20 L/h
+    low_mm = _model(route=Route.IV_BOLUS, amount_mg=10.0)
+    low_mm.hepatic_vmax_mg_h, low_mm.hepatic_km_mg_l = vmax, km
+    high_mm = _model(route=Route.IV_BOLUS, amount_mg=500.0)
+    high_mm.hepatic_vmax_mg_h, high_mm.hepatic_km_mg_l = vmax, km
+    low_lin = _model(route=Route.IV_BOLUS, amount_mg=10.0, cl_hep=vmax / km)
+    high_lin = _model(route=Route.IV_BOLUS, amount_mg=500.0, cl_hep=vmax / km)
+
+    app_cl: list[float] = []
+    for m in (low_mm, high_mm, low_lin, high_lin):
+        auc = simulate_pbpk(m, tmax_h=48.0, n_eval=200).pk_metrics().auc_inf_mgh_l
+        app_cl.append(m.dose_plan.total_dose_mg / auc)
+
+    cl_mm_low, cl_mm_high, cl_lin_low, cl_lin_high = app_cl
+    assert math.isclose(cl_mm_low, cl_lin_low, rel_tol=0.2)  # below Km -> linear slope
+    assert cl_mm_high < cl_mm_low  # saturation lowers apparent clearance
+    assert math.isclose(cl_lin_high, cl_lin_low, rel_tol=0.1)  # linear stays proportional
+
+
+def test_biliary_excretion_and_enterohepatic_recirculation() -> None:
+    # Biliary secretion routes unbound parent into a bile pool that empties
+    # into the SI lumen: with a high SI reabsorption rate the faecal spill is
+    # small (recirculation), with a low one it is large.  No clearance terms
+    # are active, so total system mass is exactly conserved in both runs.
+    dose_mg = 100.0
+
+    def run(k_si_abs: float) -> tuple[PBPKModel, PBPKResult]:
+        m = _model(route=Route.IV_BOLUS, amount_mg=dose_mg)
+        m.cl_bil_l_h = 2.0
+        m.k_bile_emptying_1h = 0.5
+        m.absorption = AbsorptionParams(k_si_absorption=k_si_abs)
+        return m, simulate_pbpk(m, tmax_h=72.0, n_eval=300)
+
+    m_fast, r_fast = run(k_si_abs=0.9)
+    m_slow, r_slow = run(k_si_abs=0.05)
+    for m, r in ((m_fast, r_fast), (m_slow, r_slow)):
+        assert r.final_state is not None
+        assert math.isclose(m.state_total_mass(r.final_state), dose_mg, rel_tol=1e-4)
+    # Slower SI reabsorption leaves more of the emptied bile to reach the feces.
+    assert float(r_fast.feces_cum_mg[-1]) < float(r_slow.feces_cum_mg[-1])
+    # Recirculation keeps the drug in the systemic loop; slow reabsorption
+    # drops it to the feces sink instead.
+    assert float(np.sum(r_fast.plasma_total)) > float(np.sum(r_slow.plasma_total))
 
 
 def test_repeated_doses_build_accumulation() -> None:

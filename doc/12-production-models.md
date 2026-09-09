@@ -122,6 +122,18 @@ with the production model wired as the validation anchor.
   published, BSA-scaled per subject.  The depth-3 CMR Physiome nephron SBML
   remains catalogued for P7; GFR baseline and AKI grading do not silently
   fall back (R-6 asserts the benchmark invariance when Scr is absent).
+- **D9 — Stage-1 extended clearance/absorption realism, off by default.**
+  The validated linear-PBPK baseline is the shipped default; the realism
+  extensions in `pk/pbpk_build.py` — active tubular secretion
+  (`cl_sec_l_h`), saturable Michaelis–Menten hepatic metabolism
+  (`hepatic_vmax_mg_h`/`hepatic_km_mg_l`), biliary drug excretion with
+  enterohepatic recirculation (`cl_bil_l_h`/`bile_emptying_1h`), and first-
+  pass gut-wall extraction (`gut_extraction_eg`) — default to 0/off so every
+  benchmark, L3 PK case and mass-balance case reproduces the linear baseline
+  exactly.  They are threaded through `RunSpec`/`spec_from_admet` and pinned
+  by the dedicated L2 case (`case_clearance_mechanisms`: analytic single-pool
+  secretion urine fraction, `F = Fa·(1−Eh)·(1−Eg)`, low-dose `Vmax/Km` slope,
+  mass-conservative EHC) in G4.
 
 ## 5. Gate-keeping notes
 
@@ -137,8 +149,9 @@ with the production model wired as the validation anchor.
   **R-2** (corpus/measured-hERG calibration), **R-3** (ORd APD90 cardiac
   cross-check), **R-4** (ADMET-AI BBB→CNS partition), **R-5** (Huang/Levchenko
   SBML MAPK cascade integration), **R-6** (CKD-EPI 2021 race-free GFR
-  baseline), **R-7** (de Bruijn & Rietjens bile-acid PBK cholestasis ranking).
-  All seven run in the G4 gate.
+  baseline), **R-7** (de Bruijn & Rietjens bile-acid PBK cholestasis ranking),
+  **D9-L2** (`case_clearance_mechanisms` — extended Stage-1 clearance/
+  absorption mechanics).  All run in the G4 gate (28/28).
 
 ## 6. References (additions beyond doc/02)
 

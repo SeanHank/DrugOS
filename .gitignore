@@ -15,7 +15,7 @@ venv/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
-.coverage
+.coverage*
 htmlcov/
 
 # CLI analysis outputs (drugos run --out, drugos study --out)
