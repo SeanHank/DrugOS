@@ -29,7 +29,9 @@
   wheel/system-R mismatch manifests in CI only. The workflow asserts
   `R >= 4.5` before the build and verifies the
   bridge end-to-end (import + one `verify_pk` fit) before the gate, so an R
-  regression fails in seconds rather than 20 minutes into G3.
+  regression fails in seconds rather than 20 minutes into G3. It also
+  installs `libsundials-dev` (the runner has no conda) so myokit's R-3
+  runtime C codegen can find `<sundials/sundials_config.h>`.
 - Runtime requirement: `R` / `Rscript` must be on `PATH` at import time of
   `drugos.rbridge`; verdicts stream to the `r_verify` contract block and the
   web report.

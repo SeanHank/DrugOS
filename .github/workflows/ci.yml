@@ -46,6 +46,16 @@ jobs:
           assert v >= (4, 5), f"R {'.'.join(map(str, v))} too old: rpy2>=3.6 needs R>=4.5 and R_getVar needs R>=4.6"
           print("R OK:", ".".join(map(str, v)))
           PY
+      - name: Install SUNDIALS headers (myokit C codegen, validation R-3)
+        # validation R-3 simulates the vendored O'Hara-Rudy 2011 model with
+        # myokit, whose runtime C codegen re-compiles each model against
+        # SUNDIALS (the PyPI myokit wheel is CVODE-enabled and the generated
+        # source includes <sundials/sundials_config.h>). The runner has no
+        # conda (doc/06 §1 lists conda/apt/brew), so we use the distro
+        # headers + shared libs package here.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libsundials-dev
       - name: Build rpy2 against the CI R (avoid manylinux wheel mismatch)
         # rpy2's manylinux cp312 wheels are CFFI API-mode compiled against a
         # pinned R version and ship no working ABI fallback on Linux (macOS
