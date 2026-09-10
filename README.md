@@ -211,19 +211,18 @@ CI (`.github/workflows/ci.yml`) automates releases on top of the quality gate:
    push, PR and tag; uploads the gate log and `validation/report.md` as
    artifacts;
 2. **build** (needs `quality`) — reads the release version from
-   `pyproject.toml`, `python -m build` produces the **wheel (`dist/*.whl`)**
-   and **sdist (`dist/*.tar.gz`)**, validates them with `twine check`,
-   smoke-tests the wheel in a clean virtualenv (imports, packaged templates +
-   `py.typed`, installed CLI), and on a **tagged push** — where the tag must
-   equal the `pyproject.toml` version — opens a **GitHub Release** with the
-   artifacts attached.
+   `pyproject.toml`, `python -m build` produces the **wheel**
+   and **sdist**, validates them with `twine check`,
+   smoke-tests the wheel in a clean virtualenv, and opens a **GitHub Release** with
+   the artifacts attached.
 
 Locally, `scripts/release.py` does the same bookkeeping in one shot: runs the
 four gates + fallback audit, bumps the project-wide version (`YYYY.M.V`),
 rewrites the version / status numbers across `README.md` and `doc/*.md`, and
 writes `build/release_status.json`.
 
-Release → `git tag 2026.9.0 && git push --tags`. Version scheme `YYYY.M.V`.
+Release → push to `main` (gates green → auto-published as `v<version>`) or
+`git tag 2026.9.0 && git push --tags`. Version scheme `YYYY.M.V`.
 
 ## Package layout
 
