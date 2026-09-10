@@ -221,7 +221,7 @@ four gates + fallback audit, bumps the project-wide version (`YYYY.M.V`),
 rewrites the version / status numbers across `README.md` and `doc/*.md`, and
 writes `build/release_status.json`.
 
-Release → push to `main` (gates green → auto-published as `v<version>`) or
+Release → push to `main` or
 `git tag 2026.9.0 && git push --tags`. Version scheme `YYYY.M.V`.
 
 ## Package layout
