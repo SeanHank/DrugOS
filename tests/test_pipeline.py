@@ -433,20 +433,25 @@ def test_admet_herg_sieve_wires_occupancy_qt_and_cardiac(fast_warfarin: RunSpec)
     blocker = replace(
         fast_warfarin, qt_ic50_nm=None, admet=AdmetOutput(smiles="CC(=O)c1ccc", hERG=0.9)
     )
-    assert pl._effective_herg_kd_nm(nonblocker) == pytest.approx(1.0e6)
-    assert pl._effective_herg_kd_nm(blocker) == pytest.approx(2.0)
-    # The sieve replaces the hERG site's KD in the panel (occupancy/primary
+    # Corpus-calibrated monotone P -> KD (doc/12 D10): never more potent than
+    # the 2 nM panel prior, exponentially weaker as confidence falls.
+    assert pl._effective_herg_kd_nm(nonblocker) == pytest.approx(269217.32)
+    assert pl._effective_herg_kd_nm(blocker) == pytest.approx(7.42894)
+    assert pl._effective_herg_kd_nm(
+        replace(nonblocker, admet=AdmetOutput(smiles="C", hERG=0.5))
+    ) == pytest.approx(1414.2136)
+    # The resolver replaces the hERG site's KD in the panel (occupancy/primary
     # signal/pathway drive) while leaving every other target untouched.
     sieved = pl._herg_sieved_panel(nonblocker)
-    assert all(t.kd_nm == pytest.approx(1.0e6) for t in sieved if "hERG" in t.name)
+    assert all(t.kd_nm == pytest.approx(269217.32) for t in sieved if "hERG" in t.name)
     assert sum(1 for t in sieved if "hERG" in t.name) == sum(
         1 for t in nonblocker.panel if "hERG" in t.name
     )
     # A predicted non-blocker loses its QT bite; a predicted blocker keeps it.
     r_nb = run_pipeline(nonblocker)
     r_b = run_pipeline(blocker)
-    assert r_nb.exposure.qt_ic50_nm == pytest.approx(1.0e6)
-    assert r_b.exposure.qt_ic50_nm == pytest.approx(2.0)
+    assert r_nb.exposure.qt_ic50_nm == pytest.approx(269217.32)
+    assert r_b.exposure.qt_ic50_nm == pytest.approx(7.42894)
     assert r_nb.exposure.dili_ic50_nm == r_b.exposure.dili_ic50_nm
     assert r_nb.organ.cardiac.delta_qtc_ms.max() < r_b.organ.cardiac.delta_qtc_ms.max()
 

@@ -1,7 +1,7 @@
 # DrugOS Validation Report
 
-- Status: **PASS** (28/28 cases passed)
-- Generated: 2026-09-09 06:23 UTC
+- Status: **PASS** (29/29 cases passed)
+- Generated: 2026-09-10 01:05 UTC
 - DrugOS version: 2026.9.0
 - Interpreter: /opt/anaconda3/envs/drug_os/bin/python
 - Parallelism: parallel (8 worker processes)
@@ -118,6 +118,14 @@
 |  |  | metrics_f_abs_reported | 0.856 [0.856, 0.856] fraction | pass |
 |  |  | permeability_gated_cmax_ordering | 0.01927 [1e-06, 1e+06] mg/L | pass |
 |  |  | permeability_gated_feces_ordering | 1.217 [-1e+06, -1e-06] mg | pass |
+| Calibrated hERG head vs corpus (R-8) | L2 | curve_floor_kd_nm | 1e+06 [1e+06, 1e+06] nM | pass |
+|  |  | curve_ceil_kd_nm | 2 [2, 2] nM | pass |
+|  |  | curve_mid_vs_corpus_median_ratio | 0.1787 [0.1, 1] ratio | pass |
+|  |  | monotone_grid_ok | 1 [1, 1] bool | pass |
+|  |  | confident_anchor_vs_corpus_p0_1 | 1924 [2, inf] nM | pass |
+|  |  | confident_anchor_vs_dofetilide_measured | 26.4 [0, inf] nM | pass |
+|  |  | admet_head_corpus_mean_prob_gap_active_minus_inactive | 0.1917 [0.1, inf] prob | pass |
+|  |  | admet_head_corpus_spearman_rho_label | 0.08279 [0, 1] rho | pass |
 | Clearance & absorption realism (secretion / gut-wall / MM / EHC) | L2 | secretion_urine_fraction | 0.09037 [0.07773, 0.095] fraction | pass |
 |  |  | secretion_lifts_urine | 0.05273 [1e-06, 1] fraction | pass |
 |  |  | gut_wall_reduces_f | 0.5 [0.45, 0.55] ratio | pass |
@@ -140,7 +148,7 @@ Results are graded by how much epistemic weight they carry (doc/08 §1.1-1.4 tie
 Per-level status:
 
 - **L3** (Empirically anchored (Tier 1)): 10/10 cases green.
-- **L2** (Analytic / mechanistic limit (Tier 2)): 13/13 cases green.
+- **L2** (Analytic / mechanistic limit (Tier 2)): 14/14 cases green.
 - **L1** (Internal consistency / CI (Tier 3)): 5/5 cases green.
 
 ## Notes & limitations
@@ -172,6 +180,7 @@ Per-level status:
 - **Bile-acid cholestasis PBK (R-7)**: de Bruijn & Rietjens (2024) bile-acid PBK reproduced at 1 uM free-hepatic exposure: ritonavir-class (IC50 0.2 uM) fold 10.32x / stress 1.00 (cholestatic), itraconazole-class (IC50 10 mM) fold 1.00x (benign); Ki=IC50/2 pinned; organ cholestasis 1.00 matches the submodel.
 - **pathway->organ regeneration coupling + bilirubin ceiling**: at 0.1966 suppressed vs 0.1927 baseline vs 0.1892 stimulated max dead fraction with regen_scale clamped to [0.50, 1.50]; bilirubin capped at 2.00xULN while uncapped hits 3.00xULN. The blocked ERK/proliferation readout attenuates (never ablates) hepatocyte regeneration, tipping the same direct stress into more cell death (occupancy -> pathway -> organ -> phenotype).
 - **bioavailability F reporting (IV/depot/oral first-pass)**: I F=1.000, depot F=0.700, oral F=0.8560; oral/IV AUC ratio=0.8607 while CL=0.5 L/h. The unabsorbed colon-transit fraction leaves the oral body and first-pass hepatic extraction is inside the reported F. Permeability-gated absorption: fa 0.95 peaks above fa 0.3 with the low-fa molecules losing more to the colon/feces sink.
+- **Calibrated hERG head vs corpus (R-8)**: hERG Central corpus IC50 distribution (two-point Hill estimates on 69539 estimable rows): median 7912.6 nM, P0.1 1923.7 nM — blockers are weak on average, so the constant 2 nM panel prior would over-flag; the calibrated curve instead maps P->KD with floor 1000000 nM, threshold 1414 nM (0.18x of the corpus median, conservative side), ceiling 2.0 nM (<= dofetilide measured 26.4 nM). ADMET-AI hERG head over 300 spread corpus rows (16 actives, 284 inactives): mean P(active) 0.69 vs P(inactive) 0.50 (gap 0.19), Spearman rho = 0.083 — the head separates corpus blockers from non-blockers in the correct direction
 - **Clearance & absorption realism (secretion / gut-wall / MM / EHC)**: V=66.4 L single pool; secretion urine_frac=0.090 vs 0.086 analytic; gut-wall F ratio=0.500; MM CL low=17.23/high=4.21 L/h; EHC feces fast=20.75/slow=55.09 mg
 
 ## Tier-1 geometric-mean fold error (L3 asserted metrics)

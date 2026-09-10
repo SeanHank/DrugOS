@@ -49,6 +49,7 @@ from drugos.target.occupancy import (
     simulate_occupancy,
     simulate_panel,
 )
+from drugos.target.resolver import bind_site, kd_from_score, resolve_admet_panel
 from drugos.target.targets import Target, safety_panel
 
 _NM_PER_MG = 1e6
@@ -56,7 +57,6 @@ _DEFAULT_SCR_BASE_UMOL_L = 80.0
 _ALT_ULN_U_L = 40.0
 _BILI_ULN_MG_DL = 1.0
 _CNS_IC50_DEFAULT_NM = 1.0e5
-_HERG_WEAK_KD_NM = 1.0e6
 
 
 @dataclass(slots=True)
@@ -325,51 +325,48 @@ def _dili_ic50(spec: RunSpec) -> float | None:
 def _effective_herg_kd_nm(spec: RunSpec) -> float | None:
     """hERG KD used by Stage-2/4 and the exposure anchors (doc/05 2.2-2.3).
 
-    Precedence: a per-compound ``qt_ic50_nm`` override, else — for novel
-    molecules scored by ADMET-AI without a measured potency — the predicted
-    hERG head acts as a sieve: a predicted non-blocker (P < 0.5) demotes the
-    dofetilide-like panel prior (2 nM) to a weak-kD floor (1 mM), a predicted
-    blocker keeps the panel prior.  Benchmarks / no-ADMET runs fall back to the
-    panel class prior unchanged.
+    Precedence: a per-compound ``qt_ic50_nm`` override is absolute; otherwise
+    a novel molecule scored by ADMET-AI maps its predicted hERG-head
+    probability onto a continuous, corpus-calibrated KD that is never more
+    potent than the panel prior and degrades toward the weak-kD floor as the
+    blocker confidence falls (doc/12 D10, path B).  Benchmarks / no-ADMET and
+    missing-head runs fall back to the panel class prior unchanged.
     """
     if spec.qt_ic50_nm is not None:
         return spec.qt_ic50_nm
     prior = next((t.kd_nm for t in spec.panel if "hERG" in t.name), None)
-    ph = spec.admet.hERG if spec.admet is not None else None
-    if ph is None:
+    if prior is None or spec.admet is None or spec.admet.hERG is None:
         return prior
-    return _HERG_WEAK_KD_NM if ph < 0.5 else prior
+    return kd_from_score(spec.admet.hERG, prior)
 
 
 def _herg_sieved_panel(spec: RunSpec) -> tuple[Target, ...]:
-    """``spec.panel`` with the hERG site bound to the effective KD.
+    """Resolve the safety panel for Stage-2 occupancy (doc/05 2.2-2.3, doc/12 D10).
 
-    Keeps the Stage-2 occupancy (and therefore the primary signal and the
-    pathway drive) consistent with the QT and exposure anchors: when ADMET-AI
-    demotes a predicted non-blocker, the panel prior is replaced in every
-    consumer at once.
+    ``spec.panel`` is first re-scored site-by-site from the ADMET-AI heads that
+    measure the same interaction (CYP2D6/3A4/2C9 inhibition, path A seam), then
+    the hERG site is bound to the effective KD — a measured ``qt_ic50_nm``
+    override stays absolute, otherwise the corpus-calibrated head sieve applies.
+    Keeps occupancy (and the pathway drive) consistent with the QT and exposure
+    anchors: the resolved KD is replaced in every consumer at once.
     """
+    panel = resolve_admet_panel(spec.panel, spec.admet)
+    if spec.qt_ic50_nm is not None:
+        return bind_site(
+            panel,
+            "hERG (Kv11.1)",
+            spec.qt_ic50_nm,
+            "measured hERG IC50 override (absolute)",
+        )
     eff = _effective_herg_kd_nm(spec)
-    if eff is None:
-        return spec.panel
-    out = []
-    for t in spec.panel:
-        if "hERG" in t.name:
-            out.append(
-                Target(
-                    name=t.name,
-                    kd_nm=eff,
-                    kon_nm_h=t.kon_nm_h,
-                    r0_nm=t.r0_nm,
-                    rho_h=t.rho_h,
-                    kint_h=t.kint_h,
-                    low_confidence=True,
-                    reference="effective hERG KD (ADMET-AI-sieved or override)",
-                )
-            )
-        else:
-            out.append(t)
-    return tuple(out)
+    if eff is not None:
+        return bind_site(
+            panel,
+            "hERG (Kv11.1)",
+            eff,
+            "hERG KD from ADMET-AI head, corpus-calibrated monotone P->KD (doc/12 D10)",
+        )
+    return panel
 
 
 def _qt_ic50(spec: RunSpec) -> float | None:

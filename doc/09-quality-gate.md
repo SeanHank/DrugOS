@@ -148,7 +148,7 @@ A release (`2026.*`) requires:
 > the gate) — do not edit by hand.
 
 - Version: **2026.9.0**
-- Validation: **PASS (28/28 cases)**
+- Validation: **PASS (29/29 cases)**
 - G1 lint (ruff): PASS
 - G2 types (mypy --strict): PASS
 - G3 coverage (100 % branch of `src/drugos`): PASS

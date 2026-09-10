@@ -40,6 +40,7 @@ Each stage is validated independently against its own literature before coupling
 | R-5 Huang/Levchenko SBML MAPK cascade | Production Stage-3 anchor: vendored BioModels BIOMD0000000009 (CC0) parses to 20 reactions/22 species via python-libsbml; drug-free system relaxes to its fully-activated PP_K steady state; signal (occupancy) inhibits upstream E1 monotonically — full occupancy collapses the readout, response is monotone in occupancy | implemented (L2, `case_sbml_mapk_validation`) |
 | R-6 CKD-EPI 2021 race-free GFR baseline | Production kidney baseline (doc/12 row 4b): male 60 y Scr 1.0 → 86.2 mL/min/1.73 m² (CKD-2 band); identical Scr yields *lower* female eGFR (64.5, sex correction); BSA-scaled absolute GFR > indexed (98.2 mL/min at 1.87 m²); a Scr-carrying profile drives `gfr_ml_min` through the equation; profiles without Scr keep the untouched default (benchmark invariance) | implemented (L2, `case_ckdepi_2021`) |
 | R-7 de Bruijn & Rietjens bile-acid PBK cholestasis | Production liver cholestasis anchor (doc/12 row 4c, paper CC BY 4.0): at 1 µM free-hepatic exposure a ritonavir-class BSEP inhibitor (IC50 0.2 µM → Ki 0.1 µM) accumulates intrahepatic GCDCA ~10.3× (stress 1.00, cholestatic) while an itraconazole-class inhibitor (IC50 10 mM) stays at 1.0× (benign); fold rises strictly with falling Ki (rank-order of clinical cholestasis reproduced); Ki=IC50/2 pinned; `simulate_liver` cholestasis matches the standalone PBK | implemented (L2, `case_liver_cholestasis_pbk`) |
+| R-8 Calibrated hERG head vs corpus (doc/12 D10) | Two-path off-target resolution: the ADMET-AI hERG-head probability maps onto a continuous, corpus-calibrated monotone P→KD curve (never more potent than the 2 nM panel prior; `P=0.5` at ~1.4 µM within 10x of the hERG Central median; ceiling tied to the dofetilide measured geomean), the curve invariants are pinned, and the head is shown to rank corpus `hERG_inhib` actives above inactives | implemented (L2, `case_herg_calibration`) |
 
 ### 1.3 Tier 3 — Prospective-Style Evaluation
 
@@ -51,7 +52,7 @@ Each stage is validated independently against its own literature before coupling
 - Unit tests per stage on analytic/limiting-case solutions (e.g., one-compartment bolus analytic vs numeric; zero-dose baseline recovery to steady state).
 - Golden-file regression tests on benchmark compounds.
 - Data-contract schema tests at every stage boundary.
-- **G4 rule:** every new model feature must add a validation case before merge; `python validation/run_validation.py` (28/28 cases green, see `validation/report.md`) regenerates the report and fails the gate on any red case.
+- **G4 rule:** every new model feature must add a validation case before merge; `python validation/run_validation.py` (29/29 cases green, see `validation/report.md`) regenerates the report and fails the gate on any red case.
 - **R is a hard runtime dependency:** a pipeline run without R raises (no silent solver-substitution); each `run_pipeline` streams an `r_verify` block into the JSON contract and the report.
 
 ## 2. Risk Assessment

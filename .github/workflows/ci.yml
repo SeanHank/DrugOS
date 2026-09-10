@@ -26,18 +26,34 @@ jobs:
           python-version: "3.12"
       - name: Install R runtime + headers (required-R bridge)
         # The R bridge is a hard dependency (doc/06): the R-1 gate runs the
-        # literature-PK estimator in R during G4, and rpy2 needs R>=4 with
-        # headers. Ubuntu's r-base/r-base-dev are R>=4.
+        # literature-PK estimator in R during G4. rpy2 3.6.x's CFFI CAPI-mode
+        # bindings reference R_getVar, a symbol that only exists in R >= 4.6.0
+        # (whose absence produced "symbol 'R_getVar' not found in libR.so"),
+        # and rpy2 >= 3.6.7 requires R >= 4.5. Ubuntu's apt r-base on
+        # ubuntu-latest is only R 4.3.x, so we install the current release
+        # (>= 4.6) via the CRAN-backed r-lib/setup-r action instead.
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: "release"
+      - name: Assert R >= 4.5 for rpy2 (R_getVar requires >= 4.6)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends r-base r-base-dev
+          python - <<'PY'
+          import re, subprocess
+          ver = subprocess.check_output(["R", "--version"], text=True)
+          m = re.search(r"R version (\d+)\.(\d+)+", ver)
+          assert m, "cannot parse R --version"
+          v = tuple(map(int, m.groups()))
+          assert v >= (4, 5), f"R {'.'.join(map(str, v))} too old: rpy2>=3.6 needs R>=4.5 and R_getVar needs R>=4.6"
+          print("R OK:", ".".join(map(str, v)))
+          PY
       - name: Build rpy2 against the CI R (avoid manylinux wheel mismatch)
         # rpy2's manylinux cp312 wheels are CFFI API-mode compiled against a
         # pinned R version and ship no working ABI fallback on Linux (macOS
         # wheels do, so local runs pass). A wheel/system-R binary mismatch
-        # therefore only breaks CI. Compiling from source against the apt
-        # R removes that variable; the later `pip install -e ".[dev]"`
-        # satisfies its `rpy2>=3.6` requirement from this build.
+        # therefore only breaks CI. Compiling from source against the R
+        # installed by setup-r removes that variable; the later
+        # `pip install -e ".[dev]"` satisfies its `rpy2>=3.6`
+        # requirement from this build.
         run: |
           R CMD config --version
           python -m pip install --no-cache-dir --no-binary=rpy2 "rpy2>=3.6"

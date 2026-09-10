@@ -33,6 +33,7 @@ from validation.cases.case_clearance_mechanisms import case_clearance_mechanisms
 from validation.cases.case_clinical_grading import case_clinical_grading
 from validation.cases.case_corpus_calibration import case_corpus_calibration
 from validation.cases.case_dose_proportionality import case_dose_proportionality
+from validation.cases.case_herg_calibration import case_herg_calibration
 from validation.cases.case_kidney_gfr import case_kidney_gfr
 from validation.cases.case_liver_cholestasis_pbk import case_liver_cholestasis_pbk
 from validation.cases.case_liver_dose_response import case_liver_dose_response
@@ -71,6 +72,7 @@ _ANALYTIC_CASES: tuple[Callable[[], CaseResult], ...] = (
     case_liver_cholestasis_pbk,
     case_pathway_organ_coupling,
     case_bioavailability_f,
+    case_herg_calibration,
     case_clearance_mechanisms,
 )
 

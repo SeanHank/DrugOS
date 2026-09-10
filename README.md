@@ -13,7 +13,7 @@ the whole biology on the way rendered as equations you can read.
 
 <p align="center">
   <a href="https://www.python.org/downloads/"><img alt="Python 3.11+" src="https://img.shields.io/badge/Python-3.11%2B-4b7bec?logo=python&logoColor=fff&labelColor=232946"></a>
-  <a href="#validation--quality-gates"><img alt="Validation 28/28" src="https://img.shields.io/badge/Validation-28%2F28%20green-2acc74?style=flat"></a>
+  <a href="#validation--quality-gates"><img alt="Validation 29/29" src="https://img.shields.io/badge/Validation-29%2F29%20green-2acc74?style=flat"></a>
   <a href="#validation--quality-gates"><img alt="Coverage 100%" src="https://img.shields.io/badge/Coverage-100%25-2acc74?style=flat"></a>
   <a href="https://github.com/"><img alt="AGPL-3.0" src="https://img.shields.io/badge/License-AGPL--3.0-5865f2?style=flat"></a>
   <a href="doc/09-quality-gate.md"><img alt="Lint" src="https://img.shields.io/badge/Lint-ruff%20+%20mypy%20--strict-9855e2?style=flat"></a>
@@ -168,7 +168,7 @@ estimator that re-derives every clearance/AUC result in the R runtime (R-1,
 agreement gated ≤ 2 %).
 
 `validation/` holds the tier ladder; `python validation/run_validation.py`
-regenerates `validation/report.md` (currently **28/28 cases green**):
+regenerates `validation/report.md` (currently **29/29 cases green**):
 
 | Tier | Case | Checks |
 |---|---|---|
@@ -182,6 +182,7 @@ regenerates `validation/report.md` (currently **28/28 cases green**):
 | L3 empirical | ORd cardiac (R-3) | ORd 2011 baseline APD90 266 ms ∈ [200,350]; IKr block prolongs ΔAPD90 ≥ 30 ms (measured ≈ 115 ms); warfarin control = 0 |
 | L2 limit | CKD-EPI 2021 (R-6) | male 60 y Scr 1.0 → 86.2 mL/min/1.73 m²; female lower at same Scr; BSA-scaled absolute GFR; Scr-profile drives `gfr_ml_min`; no-Scr keeps default |
 | L2 limit | bile-acid cholestasis PBK (R-7) | ritonavir-class IC50 0.2 µM → ~10.3× intrahepatic GCDCA (cholestatic); itraconazole-class 10 mM → 1.0× (benign); rank order in Ki; Ki=IC50/2 |
+| L2 limit | calibrated hERG head (R-8) | continuous monotone P→KD (floor 1 mM / ceil 2 nM / threshold ~1.4 µM within 10x of corpus median); ADMET hERG head ranks corpus `hERG_inhib` actives above inactives |
 
 **Quality gate** — `python scripts/release.py gates` is the single release gate:
 `scripts/release.py` (the merged successor of the former `quality_gate.sh`)
@@ -191,7 +192,7 @@ runs G1–G4 and a **no-silent-fallback audit**:
 - **G2** mypy `--strict` across `src/drugos` — no errors
 - **G3** pytest with **100 % branch coverage** of `src/drugos`, no
   exclusions
-- **G4** validation suite — 28/28 green, report regenerated
+- **G4** validation suite — 29/29 green, report regenerated
 - **G5** fallback audit — every `except` handler in the package must surface an
   explicit error; silent swallowing is a hard failure (inventory pinned in
   `scripts/fallback_allowlist.json`)

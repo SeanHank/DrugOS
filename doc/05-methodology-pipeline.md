@@ -165,11 +165,25 @@ Priority order for Kd / kon / koff of drug-target pairs:
 3. **Sequence/descriptor-based DTA** (AttentionDTA-class) otherwise.
 4. **Fallback default** for safety targets: use class-typical IC50/EC50 medians for pharmacology-informed priors and flag low confidence.
 
-> **ADMET-AI hERG sieve (2026.9.0).** For novel molecules scored by ADMET-AI
-> without a measured hERG potency, the predicted hERG head acts as a *sieve*:
-> a predicted non-blocker (`P < 0.5`) demotes the dofetilide-class panel prior
-> (2 nM) to a weak-kD floor (1 mM), a predicted blocker keeps the panel prior.
-> The effective KD (sieve result, or a per-compound `qt_ic50_nm` override)
+> **Off-target resolution — two paths (2026.9.0, doc/12 D10).** For novel
+> molecules scored by ADMET-AI without a measured potency, the inhibitor-class
+> heads that name a panel site re-score that site through a single
+> corpus-calibrated, monotone probability→KD curve
+> (`drugos.target.resolver.kd_from_score`):
+>
+> - *Path B (hERG):* the ADMET-AI hERG-head probability maps onto a continuous
+>   KD — never more potent than the 2 nM panel prior (the flagship conservative
+>   anchor, reproduced exactly at `P=1`), degrading exponentially toward the
+>   1 mM weak floor as confidence falls (`P=0`), with the classifier threshold
+>   (`P=0.5`) landing at the corpus-typical weak potency (~1.4 µM, within 10x of
+>   the hERG Central median IC50 on the conservative side; doc/08 R-8).
+> - *Path A (resolver seam):* the same curve re-binds the Veith CYP2D6/3A4/2C9
+>   inhibition heads onto their panel priors; P-gp, the transporters,
+>   mitochondrial and endocrine sites — and any primary-target site — stay on
+>   class priors until the sequence-DTI resolver (doc/12 §1 row 2b, P5) ships a
+>   corpus-calibration + equivalence case under G4/G5.
+>
+> The effective KD (resolved KD, or a per-compound `qt_ic50_nm` override)
 > replaces the hERG site in the safety panel once, so Stage-2 occupancy, the
 > QT drive and the exposure anchor all stay mutually consistent
 > (`_effective_herg_kd_nm` / `_herg_sieved_panel`). Benchmarks (no ADMET-AI

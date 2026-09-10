@@ -12,15 +12,22 @@
   Greenblatt & Koch-Weser 1975, Rowland & Tozer 2010). The bridge lives in
   `src/drugos/rbridge/` (100%-branch tested, `stubs/rpy2/robjects.pyi` for
   mypy) and is exercised by validation case R-1. A missing R runtime is a hard
-  error — never a silent fallback. For local R: R >= 4 are supported
-  (`/usr/local/bin/R` macOS Homebrew; conda `r-base`). The standalone,
+  error — never a silent fallback. For local R: R >= 4.5 are supported
+  (`/usr/local/bin/R` macOS Homebrew; conda `r-base`) — rpy2 >= 3.6.x requires
+  R >= 4.5, and its CFFI CAPI-mode bindings reference `R_getVar`, an R symbol
+  that only exists in R >= 4.6.0 (older R fails at the specific error
+  `symbol 'R_getVar' not found in library 'libR.so'`). The standalone,
   off-gate R cross-validation harness `scripts/r_crossval/` (base-R) remains
   as an independent second estimator lane.
-  **CI note:** on GitHub Actions (ubuntu-latest) the workflow builds `rpy2`
-  from source against the apt-installed R (`pip install --no-binary=rpy2`)
+  **CI note:** on GitHub Actions (ubuntu-latest) the workflow installs the
+  current R release (>= 4.5) via the CRAN-backed `r-lib/actions/setup-r@v2`
+  — Ubuntu's apt `r-base` there is only R 4.3.x and predates `R_getVar` —
+  builds `rpy2`
+  from source against it (`pip install --no-binary=rpy2`)
   because the manylinux cp312 wheel is API-mode-compiled against a pinned R
   and — unlike the macOS wheel — has no working ABI fallback there, so a
-  wheel/system-R mismatch manifests in CI only. The workflow verifies the
+  wheel/system-R mismatch manifests in CI only. The workflow asserts
+  `R >= 4.5` before the build and verifies the
   bridge end-to-end (import + one `verify_pk` fit) before the gate, so an R
   regression fails in seconds rather than 20 minutes into G3.
 - Runtime requirement: `R` / `Rscript` must be on `PATH` at import time of

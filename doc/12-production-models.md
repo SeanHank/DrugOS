@@ -33,10 +33,10 @@ with the production model wired as the validation anchor.
 | Stage | Quantity produced | Production-validated model / source | License | Integration status | Runs in this repo |
 |---|---|---|---|---|---|
 | **1. Drug → in-vivo concentration** | Physicochemical + ADME/T priors | **ADMET-AI** (Swanson et al. 2024, *Nat Mach Intell*; Zenodo weights via PyPI) | BSD-3 (code), model weights CC-BY-4.0 | **WIRED** — Stage-1 ADME primitives (`pk.admet.ADMETPredictor`) | yes (prediction tests + benchmark suite) |
-| **1b. PK estimator** | CL, AUC, t½, Vss | **R literature PK** (Wagner 1976; Gibaldi & Perrier 1982; Greenblatt & Koch-Weser 1975; Rowland & Tozer 2010) in `rbridge/literature_pk.R`, executed on **R ≥ 4** (rpy2, required dependency) | BSD-3 (R code, ours) | **WIRED + REQUIRED** — every pipeline run is cross-checked by R (validation R-1, agreement ≤ 2 %) | yes (R-1, gate) |
+| **1b. PK estimator** | CL, AUC, t½, Vss | **R literature PK** (Wagner 1976; Gibaldi & Perrier 1982; Greenblatt & Koch-Weser 1975; Rowland & Tozer 2010) in `rbridge/literature_pk.R`, executed on **R ≥ 4.5** (rpy2 ≥ 3.6, required dependency) | BSD-3 (R code, ours) | **WIRED + REQUIRED** — every pipeline run is cross-checked by R (validation R-1, agreement ≤ 2 %) | yes (R-1, gate) |
 | **1c. Physiology tables** | Volumes, flows, tissue composition | **Open Systems Pharmacology / PK-Sim** physiology DB (Open-Systems-Pharmacology) | Apache-2.0 | **CATALOGUED** (doc/11 row 4; intended `ospsuite` import; blocked on macOS — OSP engine is .NET/Windows-Linux, no PyPI wheel; P8) | no (see decision record §4) |
 | **2. Concentration → target binding** | Off-target occupancy incl. hERG | **ChEMBL** measured hERG IC50 (row-level) + **hERG Central** dose-response corpus (Du et al. 2022; FDA-provenance TDC `Herg` set) | CC0 / CC BY (ChEMBL CC BY-SA 4.0 summary terms; dataverse CC0) | **WIRED** — vendored `data/benchmarks/herg_measured_nm.json` + `data/corpora/herg_central.tsv.gz`; drives R-2 calibration + per-compound hERG override | yes (R-2, gate) |
-| **2b. Novel-molecule DTI** | Off-target affinity for un-catalogued chemistry | *(candidate)* **DeepDTA / drug-target ML or ADMET-AI hERG head** | varies | **CATALOGUED** (doc/07 P5) — not wired: ChEMBL panel is source-of-truth today | no |
+| **2b. Novel-molecule DTI** | Off-target affinity for un-catalogued chemistry | **ADMET-AI hERG + CYP2D6/3A4/2C9 inhibitor heads** re-scoring the panel through one corpus-calibrated monotone P→KD curve (doc/12 D10, live) · *(candidate)* **DeepDTA / drug-target ML** for primary-target + remaining panel sites | ADMET-AI BSD-3 code + CC-BY weights; DeepDTA varies | **WIRED (heads) / CATALOGUED (sequence-DTI, doc/07 P5)** — a general resolver must ship an L2 calibration + equivalence case before G4 admits it | yes (R-8, gate) |
 | **3. Signaling pathway** | Node activity / dose-response | **Huang & Ferrell 1996 ultrasensitive MAPK cascade** (BioModels BIOMD0000000009, CC0) — the canonical ERK cascade, now the pipeline default; **Physiome + Reactome** additional CC BY 4.0 SBML scaffolds catalogued for P7 | CC0 (vendored SBML); CC BY-SA / CC BY 4.0 (future scaffolds) | **WIRED** — `data/models/huang1996-mapk-cascade.xml` + `pathway.sbml_pathway` (python-libsbml); pipeline default `simulate_sbml_pathway`; R-5 pins parse/steady-state/monotone inhibition | yes (R-5, gate) |
 | **4. Organ function** | Cardiac repolarisation / QT | **O'Hara-Rudy 2011 (ORd) human ventricular AP model** — validated vs >100 undiseased human hearts (PLoS CB e1002061); BSD-3 Myokit encoding | BSD-3 (Myokit); CC-BY publication | **WIRED** — `data/models/ohara-2011.mmt` + `organ.cardiac_ap` lane; R-3 cross-check on the hERG/QT axis; **CiPA-v1 2017 retune vendored** for the multi-ionic-block upgrade | yes (R-3, gate) |
 | **4b. Nephron / kidney** | GFR, AKI grade | **CKD-EPI 2021 race-free equation** (Levey et al., *N Engl J Med* 2021;385:1737) — the standard published clinical eGFR baseline, BSA-scaled per subject; applied whenever a measured serum creatinine is carried on the profile. Deeper *candidate*: **CMR Physiome nephron models** (Layton)/RBF models (CC BY-SA) | CC BY 4.0 (published equation; no code license) | **WIRED** — `organ.kidney.ckdepi_2021_egfr` drives `physiology.gfr_ml_min`; R-6 pins reference eGFR points, BSA scaling, and pipeline wiring; CMR nephron SBML still **CATALOGUED** for P7 | yes (R-6, gate) |
@@ -135,6 +135,23 @@ with the production model wired as the validation anchor.
   secretion urine fraction, `F = Fa·(1−Eh)·(1−Eg)`, low-dose `Vmax/Km` slope,
   mass-conservative EHC) in G4.
 
+- **D10 — Off-target resolution is two paths: corpus-calibrated specialist
+  heads now, sequence-DTI under P5 when it ships a calibration case.**  The
+  bare binary hERG sieve is replaced by a single continuous, strictly
+  monotone probability→KD curve (`drugos.target.resolver.kd_from_score`) that
+  is *never more potent than* the panel class prior: `P=1` reproduces the
+  2 nM hERG prior exactly, `P=0` the 1 mM weak floor, and the classifier
+  threshold `P=0.5` lands at ~1.4 µM — the corpus-typical weak potency, within
+  10x of the hERG Central median on the conservative side.  Path **B** (live)
+  re-scores hERG from the ADMET-AI head; path **A** (live seam) applies the
+  same curve to the Veith CYP2D6/3A4/2C9 inhibition heads and leaves P-gp
+  (a *substrate* classifier, host to inhibition potency), the transporters,
+  mitochondrial/endocrine sites and any primary-target site on class priors
+  until the DeepDTA-family resolver ships an L2 calibration + equivalence case
+  (G4 factory rule, G5).  R-8 (`case_herg_calibration`, doc/08) pins the curve
+  invariants, the corpus anchor window and the head's own concordance with the
+  corpus `hERG_inhib` labels.
+
 ## 5. Gate-keeping notes
 
 - Every `data/` file above is sha256-pinned (`data/manifest.json`); adding any
@@ -151,7 +168,8 @@ with the production model wired as the validation anchor.
   SBML MAPK cascade integration), **R-6** (CKD-EPI 2021 race-free GFR
   baseline), **R-7** (de Bruijn & Rietjens bile-acid PBK cholestasis ranking),
   **D9-L2** (`case_clearance_mechanisms` — extended Stage-1 clearance/
-  absorption mechanics).  All run in the G4 gate (28/28).
+  absorption mechanics), **R-8** (`case_herg_calibration` — calibrated hERG
+  head vs corpus, doc/12 D10).  All run in the G4 gate (29/29).
 
 ## 6. References (additions beyond doc/02)
 
