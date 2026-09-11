@@ -90,10 +90,12 @@ Priority ranking follows `doc/04 §3` (ingestion order). For each row:
 - **Availability.** ChEMBL (EMBL-EBI, CC BY-SA 4.0, bulk FTP ~GBs, query API).
   DrugBank (full distribution: academic licence application, ~hundreds MB XML).
 - **Comparability.** ChEMBL pChEMBL/pIC50/Ki are directly the quantity our
-  `Target.kd_nm` consumes (nM). **Convert via Cheng–Prusoff, never liter-wire
-  IC50→Kd** (the current `kd_from_ic50_um` is the acknowledged simplification).
-  Sci-reliability: measured data, assay-units caveat → fit with an assay-variance
-  model. DrugBank targets define *which* panel sites matter per compound
+  `Target.kd_nm` consumes (nM). **IC50→Kd proceeds via Cheng–Prusoff only**
+  (`drugos.target.targets.cheng_prusoff_ki_nm`: Ki = IC50/(1+[S]/Km)), pinned by
+  the L2 case `case_cheng_prusoff_conversion` (default substrate ratio [S]/Km = 1
+  reproduces Ki = IC50/2; BSEP/CYP3A4/hERG conversion checks). Sci-reliability:
+  measured data, assay-units caveat → fit with an assay-variance model. DrugBank
+  targets define *which* panel sites matter per compound
   (construct match: mechanism of action lists vs. our fixed panel).
 
 ### P3. hERG / TdP assay corpus (ChEMBL-assayed hERG + EC50-summary corpora)

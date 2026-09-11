@@ -25,7 +25,15 @@ TdPBand = Literal["none", "low", "moderate", "high"]
 
 @dataclass(frozen=True, slots=True)
 class CardiacParams:
-    """Cardiac electrical-axis and hemodynamic constants."""
+    """Cardiac electrical-axis and hemodynamic constants.
+
+    ``inotropy``/``chronotropy`` scale stroke volume and heart rate from the
+    stimulatory pathway tone (doc/05 4.3); ``sympathetic_tone`` (1 =
+    intact) encodes the *suppressive* sympathetic branch as a fraction of
+    baseline beta-adrenergic drive that remains after channel/site blockade —
+    it multiplies both heart rate and contractility, so a beta-like blockade
+    at IC50 exposure halves both and quarters cardiac output.
+    """
 
     qtc_base_ms: float = 415.0
     delta_qtc_max_ms: float = 40.0
@@ -39,6 +47,24 @@ class CardiacParams:
     cvp_ref_mmhg: float = 5.0
     inotropy: float = 1.0
     chronotropy: float = 1.0
+    sympathetic_tone: float = 1.0
+
+
+def sympathetic_tone_from_emax(conc_free_nm: float, ic50_nm: float) -> float:
+    """Residual sympathetic tone from an Emax site-saturation axis.
+
+    A drug that blocks a sympathetic/beta-adrenergic site suppresses the drive
+    with the standard saturable relation ``suppression = C/(IC50 + C)`` (Emax
+    1), so the *remaining* tone is ``1 - suppression = IC50/(IC50 + C)``.
+    ``C = IC50`` halves the tone.  Applied multiplicatively to both heart rate
+    and contractility (beta-1 blockade), an IC50-level exposure therefore
+    produces a 4-fold cardiac-output reduction.
+    """
+    if not ic50_nm > 0:
+        raise ValueError("ic50_nm must be positive")
+    if not conc_free_nm >= 0:
+        raise ValueError("conc_free_nm must be non-negative")
+    return float(ic50_nm / (ic50_nm + conc_free_nm))
 
 
 @dataclass(slots=True)
@@ -134,17 +160,31 @@ def simulate_hemodynamics(
     rtol: float = 1e-8,
     atol: float = 1e-9,
 ) -> HemodynamicsResult:
-    """Two-compartment Windkessel relaxation to steady-state pressures."""
-    hr = params.bpm * params.chronotropy
-    if hr <= 0:
+    """Two-compartment Windkessel relaxation to steady-state pressures.
+
+    ``sympathetic_tone`` multiplies heart rate and stroke volume, so cardiac
+    output scales with tone^2.  The systemic resistance is pinned to the
+    *intact-tone* reference output (``co_ref``) rather than the suppressed one:
+    a beta-like suppression that lowers CO with an un-compensated vasculature
+    reads out as hypotension (MAP - CVP falls with tone^2), the analytic anchor
+    for the doc/05 4.3 sympathetic branch.  A stimulatory ERK inotropy lifts
+    co_ref itself, so it still sets resistance as before.
+    """
+    if not 0.0 < params.sympathetic_tone <= 1.0:
+        raise ValueError("sympathetic_tone must be in (0, 1]")
+    hr_ref = params.bpm * params.chronotropy
+    if hr_ref <= 0:
         raise ValueError("heart rate must be positive")
-    sv = params.sv_ml if params.sv_ml is not None else physiology.cardiac_output_ml_min / hr
-    sv = sv * params.inotropy
-    if sv <= 0:
-        raise ValueError("stroke volume must be positive")
+    sv_ref = params.sv_ml if params.sv_ml is not None else physiology.cardiac_output_ml_min / hr_ref
+    sv = sv_ref * params.inotropy
+    co_ref = hr_ref * sv / 1000.0  # L/min
+    hr = hr_ref * params.sympathetic_tone
+    sv = sv * params.sympathetic_tone
     co = hr * sv / 1000.0  # L/min
+    if co <= 0:
+        raise ValueError("cardiac output must be positive")
     r_sys = params.r_sys_mmhg_min_l or _systemic_resistance(
-        co, params.map_target_mmhg, params.cvp_ref_mmhg
+        co_ref, params.map_target_mmhg, params.cvp_ref_mmhg
     )
     if r_sys <= 0 or params.c_art_l_mmhg <= 0 or params.c_ven_l_mmhg <= 0:
         raise ValueError("circulatory constants must be positive")
@@ -227,5 +267,6 @@ __all__ = [
     "predict_qtc",
     "simulate_cardiac",
     "simulate_hemodynamics",
+    "sympathetic_tone_from_emax",
     "tdpr_band",
 ]

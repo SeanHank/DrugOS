@@ -1,7 +1,7 @@
 # DrugOS Validation Report
 
-- Status: **PASS** (29/29 cases passed)
-- Generated: 2026-09-10 01:05 UTC
+- Status: **PASS** (36/36 cases passed)
+- Generated: 2026-09-11 04:14 UTC
 - DrugOS version: 2026.9.0
 - Interpreter: /opt/anaconda3/envs/drug_os/bin/python
 - Parallelism: parallel (8 worker processes)
@@ -134,6 +134,49 @@
 |  |  | ehc_mass_conservative | 1 [1, 1] flag | pass |
 |  |  | ehc_reabsorption_vs_feces | 20.75 [0, 55.09] mg | pass |
 |  |  | ehc_lifts_plasma | 223.7 [1e-06, 1e+06] mg.h/L | pass |
+| Cheng-Prusoff IC50->Ki conversion | L2 | ki_BSEP (cholestasis)_default | 4.5e+04 [4.5e+04, 4.5e+04] nM | Ki = IC50/(1+1) = IC50/2 = 45000.0 nM |
+|  |  | ki_CYP3A4 inhibition_default | 6000 [6000, 6000] nM | Ki = IC50/(1+1) = IC50/2 = 6000.0 nM |
+|  |  | ki_hERG (Kv11.1)_default | 50 [50, 50] nM | Ki = IC50/(1+1) = IC50/2 = 50.0 nM |
+|  |  | cheng_prusoff_shape | 500 [0, 1000] nM | ratio 0 -> 1000 nM, ratio 1 -> 500 nM, ratio 9 -> 100 nM, strictly falling |
+|  |  | non-positive_ic50 | 1 [1, 1] flag | raises on non-positive IC50 |
+| Per-CYP hepatic kinetics (MM/Hill, abundance-scaled Vmax) | L2 | abundance_scaled_vmax_from_table | 7.8 [7.792, 7.808] mg/h | pass |
+|  |  | isoform_additivity_low_dose_slope | 17.23 [16, 24] L/h | pass |
+|  |  | matches_lumped_linear_twin | 17.23 [14.31, 21.46] L/h | pass |
+|  |  | abundance_doubling_doubles_slope | 1.999 [1.8, 2.2] ratio | pass |
+|  |  | hill_saturates_more_below_km | 0.6 [0, 0.85] ratio vs MM | pass |
+|  |  | hill_approaches_vmax_faster_above_km | 1.2 [1.05, 1.5] ratio vs MM | pass |
+|  |  | invalid_parameters_rejected | 1 [1, 1] flag | pass |
+| Immune-mediated DILI QST (adaptive immune response via hapten hazard) | L2 | immune_steady_state_analytic | 0.3333 [0.3266, 0.34] I_ss | pass |
+|  |  | immune_weight_zero_inert | 1.767e-08 [0, 0.005] max dead_frac difference (weight=0 vs baseline) | pass |
+|  |  | immune_weight_increases_dead | 0.68 [0.4101, 1] dead_frac @72h with immune_weight=1 | pass |
+|  |  | monotone_exposure_response | 0.666 [0, 0.6666] immune @72h (low exposure) | pass |
+|  |  | degenerate_immune_inputs_rejected | 3 [3, 3] count of rejected probes | pass |
+| ACAT-lite multi-segment SI dissolution/absorption (off by default) | L2 | single_si_baseline | 14 [0, 100] si index present | pass |
+|  |  | mass_conservation_3seg | 100 [98, 102] mg | pass |
+|  |  | solubility_caps_per_segment | 39.8 [5, 100] mg feces | pass |
+|  |  | segments_change_dissolution_dynamics | 2.824 [1, 100] mg feces difference (5-seg vs 1-seg) | pass |
+|  |  | off_by_default_state_count | 20 [20, 20] state dim | pass |
+|  |  | degenerate_segments_rejected | 1 [1, 1] flag | pass |
+| Native TMDD drug disposition (mass-balance coupling) | L2 | mass_conserves_with_binding | 50 [50, 50] mg | pass |
+|  |  | tmdd_internalization_is_drug_sink | 1.122 [0.5, 3] mg cleared in 24h | pass |
+|  |  | dose_disproportional_retention | 0.7768 [0, 0.9] fraction retained at 5 mg | pass |
+|  |  | high_dose_approaches_linear_retention | 0.9994 [0.95, 1] fraction retained at 2000 mg | pass |
+|  |  | quasi_steady_ratio_matches_kd | -0.008817 [-0.02, 0.02] log10(DR/R vs D/Kd) | pass |
+|  |  | binding_lowers_exposure_vs_twin | 0.08289 [0, 0.9] AUC ratio | pass |
+|  |  | off_by_default_state_count | 20 [20, 20] state dim without binding | pass |
+|  |  | degenerate_site_rejected | 1 [1, 1] flag | pass |
+| Multi-layer transdermal skin permeation (finite-dose membrane) | L2 | mass_conserved_with_skin_layers | 20 [20, 20] mg | pass |
+|  |  | steady_flux_matches_composite_permeability | 0.9938 [0.98, 1.02] J_obs/J_Fick | pass |
+|  |  | partition_equilibrium_recovers_k | 0.003333 [0, 0.02] max log2 deviation | pass |
+|  |  | sc_barrier_retains_finite_dose | 4.015 [0, 5.953] mg absorbed @6h (thick SC) | pass |
+|  |  | diffusivity_speeds_systemic_absorption | 8.295 [6.242, 10] mg absorbed @1h (fast SC) | pass |
+|  |  | off_by_default_state_count | 20 [20, 20] state dim without skin layers | pass |
+|  |  | degenerate_skin_rejected | 1 [1, 1] flag | pass |
+| Sympathetic suppression branch (beta-like Emax on HR and SV) | L2 | ic50_exposure_quarters_cardiac_output | 0.25 [0.25, 0.25] CO/CO_base @ IC50 | pass |
+|  |  | off_by_default_preserves_baseline | 93 [93, 93] MAP mmHg (no anchor) | pass |
+|  |  | saturating_exposure_cvp_floor | 6.725 [5, 6] arterial pressure mmHg @ saturating blockade | pass |
+|  |  | monotone_exposure_response | 0.0465 [0, 0.0465] CO @ C/IC50 = 10 | pass |
+|  |  | degenerate_sympathetic_inputs_rejected | 2 [2, 2] count of rejected probes | pass |
 
 ## Evidence levels
 
@@ -148,7 +191,7 @@ Results are graded by how much epistemic weight they carry (doc/08 §1.1-1.4 tie
 Per-level status:
 
 - **L3** (Empirically anchored (Tier 1)): 10/10 cases green.
-- **L2** (Analytic / mechanistic limit (Tier 2)): 14/14 cases green.
+- **L2** (Analytic / mechanistic limit (Tier 2)): 21/21 cases green.
 - **L1** (Internal consistency / CI (Tier 3)): 5/5 cases green.
 
 ## Notes & limitations
@@ -182,6 +225,13 @@ Per-level status:
 - **bioavailability F reporting (IV/depot/oral first-pass)**: I F=1.000, depot F=0.700, oral F=0.8560; oral/IV AUC ratio=0.8607 while CL=0.5 L/h. The unabsorbed colon-transit fraction leaves the oral body and first-pass hepatic extraction is inside the reported F. Permeability-gated absorption: fa 0.95 peaks above fa 0.3 with the low-fa molecules losing more to the colon/feces sink.
 - **Calibrated hERG head vs corpus (R-8)**: hERG Central corpus IC50 distribution (two-point Hill estimates on 69539 estimable rows): median 7912.6 nM, P0.1 1923.7 nM — blockers are weak on average, so the constant 2 nM panel prior would over-flag; the calibrated curve instead maps P->KD with floor 1000000 nM, threshold 1414 nM (0.18x of the corpus median, conservative side), ceiling 2.0 nM (<= dofetilide measured 26.4 nM). ADMET-AI hERG head over 300 spread corpus rows (16 actives, 284 inactives): mean P(active) 0.69 vs P(inactive) 0.50 (gap 0.19), Spearman rho = 0.083 — the head separates corpus blockers from non-blockers in the correct direction
 - **Clearance & absorption realism (secretion / gut-wall / MM / EHC)**: V=66.4 L single pool; secretion urine_frac=0.090 vs 0.086 analytic; gut-wall F ratio=0.500; MM CL low=17.23/high=4.21 L/h; EHC feces fast=20.75/slow=55.09 mg
+- **Cheng-Prusoff IC50->Ki conversion**: measured IC50 -> Ki via Ki = IC50/(1 + [S]/Km); doc/10 P2 'never liter-wire IC50->Kd' is now code default assay convention [S]/Km = 1 sets Ki = IC50/2 (90.0 uM -> 45000 nM)
+- **Per-CYP hepatic kinetics (MM/Hill, abundance-scaled Vmax)**: source Vmax(CYP3A4)=7.800 mg/h from 7800 nmol content; low-dose CL=17.23 vs twin 17.89 L/h; doubling ratio=2.00; Hill/MM flux at 0.5Km=0.60, at 2Km=1.20
+- **Immune-mediated DILI QST (adaptive immune response via hapten hazard)**: I_ss=0.3333 (target 0.3333); active dead@72h=0.6800 vs base=0.4101; low-exposure immune=0.6660 < active=0.6666
+- **ACAT-lite multi-segment SI dissolution/absorption (off by default)**: feces single=13.89, 3seg=8.53, sol1=36.97, sol5=39.80, mass_err=0.0000, feces_diff=2.82
+- **Native TMDD drug disposition (mass-balance coupling)**: mass-closed=50.00/50 mg, bound=1.259 mg; cleared(24h)=1.12 mg sink; retention 5 mg=0.78 vs 2000 mg=1.00 (dose-disproportional); <log10(DR/R vs D/Kd)>=-0.0088 (Kd=1.5 nM); AUC(bound)/AUC(twin)=0.08
+- **Multi-layer transdermal skin permeation (finite-dose membrane)**: mass=20.000/20 mg; J_obs/J_Fick=0.994; max partition deviation=0.003 log2; absorbed@6h thin=9.92 vs thick=4.01 mg; absorbed@1h slow=4.16 vs fast=8.29 mg
+- **Sympathetic suppression branch (beta-like Emax on HR and SV)**: C=IC50 -> CO/CO_base=0.2500 (target 0.25); saturating MAP=6.73 mmHg (floor 5.0); monotone over C/IC50 in [0.0, 0.1, 0.5, 1.0, 2.0, 10.0]
 
 ## Tier-1 geometric-mean fold error (L3 asserted metrics)
 

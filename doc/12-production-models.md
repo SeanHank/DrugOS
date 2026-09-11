@@ -126,14 +126,18 @@ with the production model wired as the validation anchor.
   The validated linear-PBPK baseline is the shipped default; the realism
   extensions in `pk/pbpk_build.py` — active tubular secretion
   (`cl_sec_l_h`), saturable Michaelis–Menten hepatic metabolism
-  (`hepatic_vmax_mg_h`/`hepatic_km_mg_l`), biliary drug excretion with
+  (`hepatic_vmax_mg_h`/`hepatic_km_mg_l`), per-CYP MM/Hill kinetics
+  (`cyp_terms`, abundance-scaled Vmax from the `CYP_ABUNDANCE_PMOL_MG`
+  table via `cyp_vmax_mg_h`), biliary drug excretion with
   enterohepatic recirculation (`cl_bil_l_h`/`bile_emptying_1h`), and first-
   pass gut-wall extraction (`gut_extraction_eg`) — default to 0/off so every
   benchmark, L3 PK case and mass-balance case reproduces the linear baseline
   exactly.  They are threaded through `RunSpec`/`spec_from_admet` and pinned
-  by the dedicated L2 case (`case_clearance_mechanisms`: analytic single-pool
-  secretion urine fraction, `F = Fa·(1−Eh)·(1−Eg)`, low-dose `Vmax/Km` slope,
-  mass-conservative EHC) in G4.
+  by the dedicated L2 cases in G4 (`case_clearance_mechanisms`: analytic
+  single-pool secretion urine fraction, `F = Fa·(1−Eh)·(1−Eg)`, low-dose
+  `Vmax/Km` slope, mass-conservative EHC; `case_cyp_kinetics`: abundance-
+  scaled Vmax from the physiology table, isoform additivity to the linear
+  twin, doubling-content slope scaling, Hill sigmoid, parameter rejection).
 
 - **D10 — Off-target resolution is two paths: corpus-calibrated specialist
   heads now, sequence-DTI under P5 when it ships a calibration case.**  The
@@ -152,6 +156,91 @@ with the production model wired as the validation anchor.
   invariants, the corpus anchor window and the head's own concordance with the
   corpus `hERG_inhib` labels.
 
+- **D11 — Native target-mediated drug disposition as a Stage-1
+  mass-balance coupling, off by default.**  The sequential pipeline only
+  *approximated* TMDD via the opt-in `feedback_loop` driver (monolithic
+  feedback without Stage-2 → Stage-1 flux coupling).  Now
+  `PBPKModel.target_binding` (with `mw_g_per_mol`) couples one binding site's
+  turnover ODEs directly into a tissue's mass balance, using the exact
+  occupancy equations of `drugos.target.occupancy`: the net bound flux
+  `kon·D·R − koff·DR` (nmol/h, the volume cancels through the tissue volume)
+  leaves the tissue pool, and `kint·DR` internalization drains into a cleared
+  sink that is part of `state_total_mass` (receptor is protein and excluded),
+  so administered drug mass is conserved-tallied even with a sink.  This is
+  the resource the pipeline was deferred on for high-affinity, high-abundance
+  targets.  Pinned in G4 by `case_tmdd_drug_disposition`: reversible mass
+  closure, irreversible sink, dose-disproportional retention (the TMDD
+  hallmark), quasi-steady KD recovery `DR/R = D/Kd`, AUC reduction vs the
+  free-dispersion twin, off-by-default state count, and degenerate-site
+  rejection.  Off by default so every benchmark/L3 case reproduces the linear
+  baseline exactly.
+
+- **D12 — Finite-dose multi-layer skin permeation as the transdermal
+  absorption path, off by default.**  The deferred transport item asked for a
+  real skin-permeation membrane instead of the generic transdermal depot.
+  `AbsorptionParams.skin_layers` (`SkinLayers`) adds four compartments
+  (vehicle surface -> stratum corneum -> viable epidermis -> dermis) coupled
+  by reversible diffusion-limited links `J_k = D_k*A/L_k*(C_up - C_down/K_k)`
+  with interface partition ratios and first-order dermal capillary removal
+  into venous blood (weighted by `depot_bioavailability`, complement tallied
+  in the skin unabsorbed sink).  The serial 3-resistance membrane reproduces
+  the Fick steady state `J_ss = P_eff*A*C_surface` and, at zero flux, the
+  interface partitions; all five layer states stay inside `state_total_mass`
+  so transdermal mass closes against the dose.  Pinned in G4 by
+  `case_transdermal_multi_layer`: mass closure, composite-permeability flux,
+  partition recovery, stratum-corneum barrier and diffusivity responsiveness,
+  off-by-default state count, degenerate-membrane rejection.  Off by default
+  so the validated depot semantics remain the shipped baseline.
+
+- **D13 — Sympathetic suppression as a saturable Emax branch on HR and SV,
+  off by default.**  The doc/05 4.3 deferred line said the ERK readout cannot
+  encode sympathetic *suppression* (it is a stimulatory downstream-of-β-agonist
+  proxy), so a beta-like bradycardia/negative-inotropy drug was not
+  representable.  `CardiacParams.sympathetic_tone` (default 1.0) now encodes
+  the branch: `sympathetic_tone_from_emax()` maps a free heart exposure to
+  residual tone `IC50/(IC50 + C)`, wired from the PBPK heart free compartment
+  when `RunSpec.beta_block_ic50_nm` is set, and `simulate_hemodynamics()`
+  multiplies it into both heart rate and stroke volume (CO ~ tone²).  Systemic
+  resistance stays pinned to the *intact-tone* reference output, so the 
+  suppression reads out as hypotension on the two-compartment Windkessel:
+  `pa − pv = tone²·(MAP_ref − CVP)` at steady state, feeding the loop
+  `co_fraction` and organ perfusion scaling.  Pinned in G4 by
+  `case_cardiac_sympathetic_suppression`: IC50 exposure quarters CO exactly,
+  zero-exposure/off-by-default baseline, saturating exposure falls to the CVP
+  floor, monotone exposure-response, and degenerate-input rejection.  ERK tone
+  scales `inotropy/chronotropy` and the sympathetic tone is a *separate*
+  multiplicative axis, so the validated stimulatory coupling is unchanged.
+
+- **D14 — Immune-mediated DILI as a saturable adaptive-response hazard,
+  off by default.**  Doc/05 4.2 item 5 was an explicit stub: immune-mediated
+  hepatocyte killing was deferred.  ``LiverParams.immune_ic50_nm`` now
+  supplies a Hill-sigmoid hapten/danger hazard (``immune_hazard()``) from
+  free hepatic exposure; the hazard drives a recruitment/decay adaptive
+  immune-response ODE (``dI = k_recruit·hazard·(1−I) − k_decay·I``, second
+  liver state) whose output loads the fourth ``combined_stress()`` axis via
+  ``immune_weight`` (default 0).  The steady-state ``I_ss =
+  k_recruit·hazard/(k_recruit + k_decay)`` is physically intuitive (fast
+  recruit, slow decay → persistent signal) and pinned analytically by the
+  L2 case.  Off by default (``immune_ic50_nm=None``, ``immune_weight=0``)
+  so every validated cholestatic/mitochondrial/redox composition is
+  reproduced exactly.  Wired from ``RunSpec.dili_immune_ic50_nm`` /
+  ``dili_immune_weight`` with a sensible default ``immune_weight=0.5``
+  when the IC50 anchor is provided; ``ExposureProfile.dili_immune_ic50_nm``
+  surfaces the anchor in the contract.
+
+- **D15 — ACAT-lite multi-segment SI dissolution, off by default.**
+  Doc/05 §1.6 noted "no multi-segment small-intestinal dissolution
+  resolution."  ``AbsorptionParams.si_segments`` now splits the single SI
+  compartment into N sequential equal-volume sub-compartments when set
+  (``si_segments`` defaults to ``None``, single lump).  Each sub-compartment
+  has its own dissolution cap (``solubility_mg_ml * gi_volume_ml / N`` mg)
+  and first-order ``k_si_absorption``; per-segment transit is scaled to
+  ``k_si_transit * N`` so total SI transit time (``1/k_si_transit``) is
+  preserved.  Bile secretion enters segment 0 (proximal SI).  Off by default
+  so the validated single-compartment ACAT-lite is reproduced exactly.
+  Wired from ``AbsorptionParams.si_segments`` (no ``RunSpec`` passthrough;
+  direct model-construction parameter).
+
 ## 5. Gate-keeping notes
 
 - Every `data/` file above is sha256-pinned (`data/manifest.json`); adding any
@@ -169,7 +258,25 @@ with the production model wired as the validation anchor.
   baseline), **R-7** (de Bruijn & Rietjens bile-acid PBK cholestasis ranking),
   **D9-L2** (`case_clearance_mechanisms` — extended Stage-1 clearance/
   absorption mechanics), **R-8** (`case_herg_calibration` — calibrated hERG
-  head vs corpus, doc/12 D10).  All run in the G4 gate (29/29).
+  head vs corpus, doc/12 D10), **D-L2** (`case_cyp_kinetics` — per-CYP
+  MM/Hill clearance), **D-L2** (`case_cheng_prusoff_conversion` — IC50→Ki),
+  **TMDD-L2** (`case_tmdd_drug_disposition` — native target-mediated drug
+  disposition mass-balance coupling), **SKIN-L2** (`case_transdermal_multi_layer`
+  — finite-dose multi-layer skin-permeation membrane), **SYMP-L2**
+  (`case_cardiac_sympathetic_suppression` — saturable Emax beta-like
+  sympathetic-suppression branch on HR/SV with CO ~ tone², hypotension on the
+  fixed-resistance Windkessel, monotone exposure-response, saturating CVP
+  floor).  **DILI-L2** (`case_dili_immune_activation` — adaptive immune-response
+  DILI QST: saturable hapten hazard driving a recruitment/decay ODE,
+  steady-state I_ss analytic, immune_weight inert at 0, monotone
+  dose-response, degenerate-input rejection).  **ACAT-L2**
+  (`case_acat_multisegment_si` — ACAT-lite multi-segment SI dissolution/
+  absorption: N sequential equal-volume SI sub-compartments with per-segment
+  dissolution caps, bile enters segment 0, per-segment transit scaled to
+  ``k_si_transit * N`` (total transit time preserved); off-by-default,
+  mass conservation, solubility cap, segment-count sensitivity, degenerate
+  rejection).  All run in the G4 gate
+  (36/36).
 
 ## 6. References (additions beyond doc/02)
 

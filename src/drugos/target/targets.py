@@ -20,6 +20,21 @@ from dataclasses import dataclass
 _NM_PER_MICRO_M = 1e3
 
 
+def cheng_prusoff_ki_nm(ic50_um: float, substrate_ratio: float) -> float:
+    """Cheng & Prusoff (1973) competitive-inhibition Ki from an IC50.
+
+    ``Ki = IC50 / (1 + [S]/Km)`` with ``[S]/Km`` given by ``substrate_ratio``
+    (0 for assays run well below Km).  Raises on non-positive IC50 or negative
+    ratio; the returned Ki is strictly more potent (smaller) than the raw IC50
+    for any positive ratio.
+    """
+    if ic50_um <= 0:
+        raise ValueError("ic50_um must be positive")
+    if substrate_ratio < 0:
+        raise ValueError("substrate_ratio must be >= 0")
+    return ic50_um * _NM_PER_MICRO_M / (1.0 + substrate_ratio)
+
+
 @dataclass(frozen=True, slots=True)
 class Target:
     """A drug-binding site with equilibrium and turnover parameters.
@@ -58,12 +73,27 @@ class Target:
     def koff_1h(self) -> float:
         return self.kon_nm_h * self.kd_nm
 
-    def kd_from_ic50_um(self, ic50_um: float) -> Target:
-        """Return a copy whose affinity derives from a measured IC50 (µM)."""
-        kd = ic50_um * _NM_PER_MICRO_M
+    def kd_from_ic50_um(self, ic50_um: float, substrate_ratio: float = 1.0) -> Target:
+        """Return a copy whose affinity derives from an IC50 via Cheng & Prusoff.
+
+        Competitive-inhibition conversion (Cheng & Prusoff 1973):
+
+            Ki = IC50 / (1 + [S]/Km)
+
+        ``substrate_ratio`` carries the assay context ``[S]/Km`` (for binding
+        assays the radioligand concentration relative to its own Kd).  The
+        default ``1.0`` is the competition-binding convention (probe run near
+        its dissociation constant), which yields ``Ki = IC50/2`` — the
+        conservative, half-maximal potency choice.  ``0.0`` applies to assays
+        run well below Km (or non-competitive assays), where ``Ki = IC50``.
+        """
+        if ic50_um <= 0:
+            raise ValueError("ic50_um must be positive")
+        if substrate_ratio < 0:
+            raise ValueError("substrate_ratio must be >= 0")
         return Target(
             name=self.name,
-            kd_nm=kd,
+            kd_nm=cheng_prusoff_ki_nm(ic50_um, substrate_ratio),
             kon_nm_h=self.kon_nm_h,
             r0_nm=self.r0_nm,
             rho_h=self.rho_h,
@@ -136,4 +166,4 @@ def safety_panel() -> tuple[Target, ...]:
     )
 
 
-__all__ = ["Target", "safety_panel"]
+__all__ = ["Target", "cheng_prusoff_ki_nm", "safety_panel"]

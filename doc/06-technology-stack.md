@@ -137,7 +137,7 @@ torch (cpu ok for inference)
 ## 3.1 Project Versioning
 
 - The whole project follows the `YYYY.M.V` scheme (year, month, intra-month revision starting at 0) — see `01-project-overview.md` section 0.1.
-- The version is emitted by `src/drugos/version.py` and mirrored in `pyproject.toml`; package and report versions must match. Baseline: **2026.9.0**.
+- The version is emitted by `src/drugos/version.py` and mirrored in `pyproject.toml`; package and report versions must match. Baseline: **2026.9.1**.
 
 ## 4. Data Files Layout
 

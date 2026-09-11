@@ -23,15 +23,22 @@ from validation.cases.base import (
     EvidenceLevel,
     MetricResult,
 )
+from validation.cases.case_acat_multisegment_si import case_acat_multisegment_si
 from validation.cases.case_admet_bbb_cns import case_admet_bbb_cns
 from validation.cases.case_benchmarks import evaluate_benchmark
 from validation.cases.case_bioavailability_f import case_bioavailability_f
 from validation.cases.case_cardiac_ap_ord import case_cardiac_ap_ord
 from validation.cases.case_cardiac_qtc import case_cardiac_qtc
+from validation.cases.case_cardiac_sympathetic_suppression import (
+    case_cardiac_sympathetic_suppression,
+)
+from validation.cases.case_cheng_prusoff_conversion import case_cheng_prusoff_conversion
 from validation.cases.case_ckdepi_2021 import case_ckdepi_2021
 from validation.cases.case_clearance_mechanisms import case_clearance_mechanisms
 from validation.cases.case_clinical_grading import case_clinical_grading
 from validation.cases.case_corpus_calibration import case_corpus_calibration
+from validation.cases.case_cyp_kinetics import case_cyp_kinetics
+from validation.cases.case_dili_immune_activation import case_dili_immune_activation
 from validation.cases.case_dose_proportionality import case_dose_proportionality
 from validation.cases.case_herg_calibration import case_herg_calibration
 from validation.cases.case_kidney_gfr import case_kidney_gfr
@@ -48,6 +55,8 @@ from validation.cases.case_robustness_sanity import case_robustness_sanity
 from validation.cases.case_sbml_mapk_validation import case_sbml_mapk_validation
 from validation.cases.case_sc_im_depot import case_sc_im_depot
 from validation.cases.case_single_pool_analytic import case_single_pool_analytic
+from validation.cases.case_tmdd_drug_disposition import case_tmdd_drug_disposition
+from validation.cases.case_transdermal_multi_layer import case_transdermal_multi_layer
 
 _ANALYTIC_CASES: tuple[Callable[[], CaseResult], ...] = (
     case_mass_balance,
@@ -74,6 +83,13 @@ _ANALYTIC_CASES: tuple[Callable[[], CaseResult], ...] = (
     case_bioavailability_f,
     case_herg_calibration,
     case_clearance_mechanisms,
+    case_cheng_prusoff_conversion,
+    case_cyp_kinetics,
+    case_dili_immune_activation,
+    case_acat_multisegment_si,
+    case_tmdd_drug_disposition,
+    case_transdermal_multi_layer,
+    case_cardiac_sympathetic_suppression,
 )
 
 _Step = tuple[Callable[..., CaseResult], tuple[Any, ...]]

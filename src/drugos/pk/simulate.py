@@ -9,11 +9,16 @@ import numpy as np
 from scipy.integrate import solve_ivp
 
 from drugos.inputs.models import Route
-from drugos.pk.pbpk_build import PBPKModel
+from drugos.pk.pbpk_build import PBPKModel, TargetBinding
 
 NDArray = np.ndarray[tuple[int], np.dtype[np.float64]]
 _METHOD = Literal["RK23", "RK45", "DOP853", "Radau", "BDF", "LSODA"]
 _DEFAULT_N_EVAL = 601
+
+
+def _site_label(binding: TargetBinding) -> str:
+    return f"{binding.tissue}::{binding.target.name}"
+
 
 _DEPOT_ROUTES = frozenset({Route.SUBCUTANEOUS, Route.INTRAMUSCULAR, Route.TRANSDERMAL})
 _IV_ROUTES = frozenset({Route.IV_BOLUS, Route.IV_INFUSION})
@@ -89,9 +94,13 @@ class PkMetrics:
 class PBPKResult:
     """Concentration-time output of a PBPK simulation.
 
-    Concentrations are in mg/L, times in hours. Tissue entries are total
+    Concentrations are in mg/L, times in hours.  Tissue entries are total
     (free + bound) tissue concentrations; ``unbound_tissues`` are the free
     concentrations that drive pharmacological and toxicological responses.
+    ``tmdd`` carries the native-TMDD bound and internalized-cleared
+    trajectories per binding site when ``model.target_binding`` is used.
+    ``skin`` carries the multi-layer transdermal layer amounts plus the
+    cumulative absorbed mass when ``model.absorption.skin_layers`` is set.
     """
 
     t: NDArray
@@ -108,6 +117,8 @@ class PBPKResult:
     solver: str = "LSODA"
     final_state: NDArray | None = None
     bioavailability_f: float | None = None
+    tmdd: dict[str, dict[str, NDArray]] | None = None
+    skin: dict[str, NDArray] | None = None
 
     def pk_metrics(self) -> PkMetrics:
         return compute_pk_metrics(
@@ -130,6 +141,10 @@ class PBPKResult:
             "urine_cum_mg": None if self.urine_cum_mg is None else self.urine_cum_mg.tolist(),
             "feces_cum_mg": None if self.feces_cum_mg is None else self.feces_cum_mg.tolist(),
             "pk_metrics": self.pk_metrics().as_dict(),
+            "tmdd": None
+            if self.tmdd is None
+            else {k: {kk: vv.tolist() for kk, vv in v.items()} for k, v in self.tmdd.items()},
+            "skin": None if self.skin is None else {k: v.tolist() for k, v in self.skin.items()},
         }
 
 
@@ -164,6 +179,8 @@ def simulate_pbpk(
     y_venous: list[NDArray] = []
     y_urine: list[NDArray] = []
     y_feces: list[NDArray] = []
+    y_skin: dict[str, list[float]] = {key: [] for key in _SKIN_KEYS}
+    y_skin_rate: list[float] = []
 
     def record(t: NDArray, y: np.ndarray[tuple[int, int], np.dtype[np.float64]]) -> None:
         c_ab = y[model.state_index("arterial")] / model.physiology.arterial_blood_l
@@ -176,6 +193,24 @@ def simulate_pbpk(
         for name in model.order:
             conc = y[model.state_index(name)] / model.physiology.organ_volume[name]
             y_tissues[name].append(conc)
+        if model._skin_indices:
+            for key in _SKIN_KEYS:
+                y_skin[key].extend(y[model._skin_indices[f"skin_{key}"], :].tolist())
+            y_skin_rate.extend(
+                float(model.skin_absorption_rate_mg_h(y[:, j])) for j in range(y.shape[1])
+            )
+        if model.target_binding:
+            for j in range(y.shape[1]):
+                for site, row in zip(
+                    model.target_binding,
+                    model.tmdd_state_record(y[:, j]),
+                    strict=True,
+                ):
+                    tmdd_sites[_site_label(site)].append(row)
+
+    tmdd_sites: dict[str, list[dict[str, float]]] = {
+        _site_label(site): [] for site in model.target_binding
+    }
 
     for i in range(len(boundaries) - 1):
         a, b = boundaries[i], boundaries[i + 1]
@@ -208,6 +243,16 @@ def simulate_pbpk(
     tissues = {name: np.concatenate(ys) for name, ys in y_tissues.items()}
     unbound_tissues = {name: tissues[name] / model.partition.kpu[name] for name in tissues}
 
+    tmdd = None
+    if model.target_binding:
+        tmdd = {
+            site: {
+                key: np.asarray([row[key] for row in rows], dtype=float)
+                for key in ("receptor_nmol", "complex_nmol", "bound_mg", "cleared_mg")
+            }
+            for site, rows in tmdd_sites.items()
+        }
+
     return PBPKResult(
         t=t_all,
         plasma_total=plasma,
@@ -225,7 +270,30 @@ def simulate_pbpk(
         bioavailability_f=bioavailable_fraction(
             model, _route_of(model), model.dose_plan.total_dose_mg, feces
         ),
+        tmdd=tmdd,
+        skin=_skin_result(model, t_all, y_skin, y_skin_rate),
     )
+
+
+_SKIN_KEYS = ("surface", "sc", "ve", "dermis", "unabsorbed")
+
+
+def _skin_result(
+    model: PBPKModel,
+    t_all: NDArray,
+    y_skin: dict[str, list[float]],
+    y_skin_rate: list[float],
+) -> dict[str, NDArray] | None:
+    """Assemble the per-layer skin trajectories and cumulative absorption."""
+    if not model._skin_indices or not y_skin:
+        return None
+    rate = np.asarray(y_skin_rate, dtype=float)
+    dt = np.diff(np.asarray(t_all, dtype=float))
+    cum = np.concatenate(([0.0], np.cumsum(0.5 * dt * (rate[:-1] + rate[1:]))))
+    return {
+        **{f"{k}_mg": np.asarray(v, dtype=float) for k, v in y_skin.items()},
+        "absorbed_mg": cum,
+    }
 
 
 def _route_of(model: PBPKModel) -> Route:

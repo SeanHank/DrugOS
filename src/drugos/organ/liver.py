@@ -77,6 +77,10 @@ class LiverParams:
     bili_rise_per_dead: float = 1.5
     kexpz_atp: float = 0.05  # adaptive mitogenesis recovery per unit ATP shortfall
     immune_weight: float = 0.0  # immune-mediated DILI axis; inert at 0 (default)
+    immune_ic50_nm: float | None = None  # immune-hazard IC50; None disables the axis
+    immune_hill: float = 1.0
+    immune_recruit_1h: float = 0.02  # adaptive immune-cell recruitment rate
+    immune_decay_1h: float = 0.05  # immune-response decay rate
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +108,7 @@ class LiverTrajectory:
     atp_frac: NDArray
     gsh_frac: NDArray
     stress: NDArray
+    immune: NDArray
     dead_frac: NDArray
     regen_scale: NDArray
     alt_u_l: NDArray
@@ -126,6 +131,7 @@ class LiverTrajectory:
             "atp_frac": self.atp_frac,
             "gsh_frac": self.gsh_frac,
             "stress": self.stress,
+            "immune": self.immune,
             "dead_frac": self.dead_frac,
             "regen_scale": self.regen_scale,
             "alt_U_L": self.alt_u_l,
@@ -156,6 +162,25 @@ def redox_state(c: float, ic50_nm: float) -> tuple[float, float, float]:
         raise ValueError("ic50_nm must be positive")
     ros = 0.0 if c <= 0 else c / (c + ic50_nm)
     return ros, max(0.15, 1.0 - ros), ros * max(0.0, 1.0 - ros)
+
+
+def immune_hazard(c: float, ic50_nm: float, hill: float = 1.0) -> float:
+    """Immune-mediated DILI hazard from free hepatic nM ``c`` (Hill sigmoid).
+
+    The hazard represents haptenized reactive-intermediate / danger-signal
+    formation driving adaptive immune-cell recruitment (doc/05 4.2 seam that
+    was a stub).  It is inert at zero exposure and saturable at high
+    exposure; the *dynamic* immune response derives from it via
+    ``immune_recruit_1h``/``immune_decay_1h`` in :func:`simulate_liver`.
+    """
+    if ic50_nm <= 0:
+        raise ValueError("ic50_nm must be positive")
+    if hill <= 0:
+        raise ValueError("hill must be positive")
+    if c <= 0:
+        return 0.0
+    cn = c**hill
+    return float(cn / (cn + ic50_nm**hill))
 
 
 # ---------------------------------------------------------------------------
@@ -574,6 +599,14 @@ def simulate_liver(
     direct stress accumulate to more cell death).  The total-bilirubin rise is
     capped at ``bile_rise_max_fold`` x ULN (the declared cholestasis ceiling;
     the un-clamped rise above it stays in ``stress``).
+
+    **Immune-mediated axis** (off by default): when ``LiverParams.immune_ic50_nm``
+    is set, the hapten/danger hazard :func:`immune_hazard` drives an adaptive
+    immune-response state ``imm`` (ODEs ``dimm = k_recruit*hazard*(1-imm) -
+    k_decay*imm``) whose level loads the fourth ``combined_stress`` axis via
+    ``immune_weight``.  With ``immune_weight`` or ``immune_ic50_nm`` at their
+    defaults the axis is inert and the trajectory is the validated
+    cholestasis/ATP/GSH composition exactly.
     """
     p = params or LiverParams()
     t = np.asarray(t_h, dtype=float)
@@ -586,6 +619,10 @@ def simulate_liver(
         s = np.asarray(proliferation_signal, dtype=float)
         if s.ndim != 1 or s.shape[0] != t.shape[0]:
             raise ValueError("proliferation_signal must be equal-length to t_h")
+    if p.immune_ic50_nm is not None and p.immune_ic50_nm <= 0:
+        raise ValueError("immune_ic50_nm must be positive")
+    if p.immune_hill <= 0 or p.immune_recruit_1h < 0 or p.immune_decay_1h < 0:
+        raise ValueError("immune constants must be positive/non-negative")
 
     chol_raw = simulate_gcdca_pbk(
         t,
@@ -599,6 +636,13 @@ def simulate_liver(
         dtype=float,
     )
     gsh_g = np.array([redox_state(float(cc), p.redox_ic50_nm)[1] for cc in c], dtype=float)
+    imm_g = np.array(
+        [
+            immune_hazard(float(cc), p.immune_ic50_nm) if p.immune_ic50_nm is not None else 0.0
+            for cc in c
+        ],
+        dtype=float,
+    )
 
     regen_g = (
         np.ones_like(t, dtype=float)
@@ -611,30 +655,39 @@ def simulate_liver(
         )
     )
 
-    def stress_at(sol_t: float) -> float:
+    def stress_at(sol_t: float, imm: float) -> float:
         chol = float(np.interp(sol_t, t, chol_g))
         atp_frac = float(np.interp(sol_t, t, atp_g))
         gsh = float(np.interp(sol_t, t, gsh_g))
-        return combined_stress(chol, atp_frac, gsh, immune=0.0, immune_weight=p.immune_weight)
+        return combined_stress(chol, atp_frac, gsh, immune=imm, immune_weight=p.immune_weight)
 
     def regen_at(sol_t: float) -> float:
         return float(np.interp(sol_t, t, regen_g))
 
+    def immune_at(sol_t: float) -> float:
+        return float(np.interp(sol_t, t, imm_g))
+
     def rhs(sol_t: float, y: NDArray) -> NDArray:
         dead = float(y[0])
-        return np.array([_death_rhs(dead, stress_at(sol_t), p, regen_at(sol_t))], dtype=float)
+        imm = float(y[1])
+        d_dead = _death_rhs(dead, stress_at(sol_t, imm), p, regen_at(sol_t))
+        d_imm = p.immune_recruit_1h * immune_at(sol_t) * (1.0 - imm) - p.immune_decay_1h * imm
+        return np.array([d_dead, d_imm], dtype=float)
 
-    y0 = np.array([0.0], dtype=float)
+    y0 = np.array([0.0, 0.0], dtype=float)
     t_eval = np.linspace(t[0], t[-1], n_eval)
     sol = solve_ivp(rhs, (t[0], t[-1]), y0, t_eval=t_eval, method="LSODA", rtol=rtol, atol=atol)
     if not sol.success:
         raise RuntimeError(f"liver solve failed: {sol.message}")
     dead = sol.y[0]
+    imm = sol.y[1]
 
     chol: NDArray = np.interp(t_eval, t, chol_g)
     atp: NDArray = np.interp(t_eval, t, atp_g)
     gsh: NDArray = np.interp(t_eval, t, gsh_g)
-    stress: NDArray = np.array([stress_at(float(tp)) for tp in t_eval], dtype=float)
+    stress: NDArray = np.array(
+        [stress_at(float(tp), float(np.interp(tp, t_eval, imm))) for tp in t_eval], dtype=float
+    )
     free: NDArray = np.interp(t_eval, t, c)
     regen_traj: NDArray = np.interp(t_eval, t, regen_g)
 
@@ -657,6 +710,7 @@ def simulate_liver(
         atp_frac=atp,
         gsh_frac=gsh,
         stress=stress,
+        immune=imm,
         dead_frac=dead,
         regen_scale=regen_traj,
         alt_u_l=alt,
@@ -683,6 +737,7 @@ __all__ = [
     "bsep_ki_from_ic50_nm",
     "combined_stress",
     "dili_grade",
+    "immune_hazard",
     "inhibition",
     "liver_params_from_panel",
     "mitochondrial_block",

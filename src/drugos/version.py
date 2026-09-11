@@ -7,5 +7,5 @@ Project-wide version scheme: YYYY.M.V
 On a month/year rollover V resets to 0.
 """
 
-__version__ = "2026.9.0"
+__version__ = "2026.9.1"
 PACKAGE_VERSION = __version__

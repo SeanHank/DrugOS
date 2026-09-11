@@ -52,7 +52,7 @@ Each stage is validated independently against its own literature before coupling
 - Unit tests per stage on analytic/limiting-case solutions (e.g., one-compartment bolus analytic vs numeric; zero-dose baseline recovery to steady state).
 - Golden-file regression tests on benchmark compounds.
 - Data-contract schema tests at every stage boundary.
-- **G4 rule:** every new model feature must add a validation case before merge; `python validation/run_validation.py` (29/29 cases green, see `validation/report.md`) regenerates the report and fails the gate on any red case.
+- **G4 rule:** every new model feature must add a validation case before merge; `python validation/run_validation.py` (36/36 cases green, see `validation/report.md`) regenerates the report and fails the gate on any red case.
 - **R is a hard runtime dependency:** a pipeline run without R raises (no silent solver-substitution); each `run_pipeline` streams an `r_verify` block into the JSON contract and the report.
 
 ## 2. Risk Assessment
@@ -70,13 +70,13 @@ Each stage is validated independently against its own literature before coupling
 | 9 | **Computational cost of ensemble/population simulation** | Low | Med | Numba jit on ODE RHS; aggressive cruft-free models; parallel sampling via multiprocessing |
 | 10 | **Scope creep toward "patient diagnosis"** — overclaiming clinical utility | Low | High | This is a research/modeling tool, not regulated software; clear disclaimers; outputs framed as hypothesis-generating |
 
-## 3. Regulatory & Ethics Posture (baseline 2026.9.0)
+## 3. Regulatory & Ethics Posture (baseline 2026.9.1)
 
 - DrugOS is a **mechanistic research and education platform**, not a replacement for clinical judgment or a regulated medical device.
 - All outputs are accompanied by uncertainty bands; toxicity calls are advisory and hypothesis-generating.
 - No patient-identifiable data used; human profiles are parametric and synthetic (all inputs remain arbitrarily configurable by the user, per `01-project-overview.md` section 3.1).
 
-## 4. Acceptance Criteria for Release (baseline 2026.9.0)
+## 4. Acceptance Criteria for Release (baseline 2026.9.1)
 
 1. Benchmark suite (Tier 1 set) passes stage-level and end-to-end checks with documented fold-errors.
 2. ROC ordering on a held-out compound set meets the agreed target or the deviation is documented.

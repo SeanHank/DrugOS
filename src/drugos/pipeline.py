@@ -11,7 +11,7 @@ document consumed by ``drugos.report``, the CLI and the web playground.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import numpy as np
@@ -28,8 +28,13 @@ from drugos.inputs.models import DosePlan, HumanProfile, Molecule, Route, Sex
 from drugos.inputs.parse_dosing import build_dose_plan
 from drugos.inputs.parse_structure import parse_structure
 from drugos.inputs.resolve_human import resolve_human
-from drugos.organ.base import NDArray
-from drugos.organ.cardiac import CardiacParams, CardiacResult, simulate_cardiac
+from drugos.organ.base import NDArray, free_mg_l_to_nm
+from drugos.organ.cardiac import (
+    CardiacParams,
+    CardiacResult,
+    simulate_cardiac,
+    sympathetic_tone_from_emax,
+)
 from drugos.organ.cns import CnsParams, CnsResult, kpu_brain_from_bbb, simulate_cns
 from drugos.organ.feedback import OrganFeedback, apply_pk_scaling, feedback_from_results
 from drugos.organ.kidney import KidneyResult, simulate_kidney
@@ -38,9 +43,17 @@ from drugos.pathway.sbml_pathway import simulate_sbml_pathway
 from drugos.pathway.simulator import PathwayResult
 from drugos.pk.admet import AdmetOutput
 from drugos.pk.partitions import partition_from_molecule
-from drugos.pk.pbpk_build import AbsorptionParams, PBPKModel, absorption_rate_from_fa
+from drugos.pk.pbpk_build import (
+    TISSUE_LIST,
+    AbsorptionParams,
+    CypTerm,
+    PBPKModel,
+    TargetBinding,
+    absorption_rate_from_fa,
+)
 from drugos.pk.physiology import HumanPhysiology, build_human, glom_filtration_clearance
 from drugos.pk.simulate import PBPKResult, PkMetrics, compute_pk_metrics, simulate_pbpk
+from drugos.pk.skin import SkinLayers
 from drugos.rbridge import RVerify
 from drugos.rbridge import verify_pk as _r_verify_pk
 from drugos.target.occupancy import (
@@ -76,7 +89,10 @@ class RunSpec:
     liver_params: LiverParams | None = None
     qt_ic50_nm: float | None = None
     dili_ic50_nm: float | None = None
+    dili_immune_ic50_nm: float | None = None
+    dili_immune_weight: float | None = None
     cns_ic50_nm: float | None = None
+    beta_block_ic50_nm: float | None = None
     tmax_h: float = 48.0
     n_eval: int = 601
     include_pathway: bool = True
@@ -88,7 +104,10 @@ class RunSpec:
     bile_emptying_1h: float = 1.0
     hepatic_vmax_mg_h: float | None = None
     hepatic_km_mg_l: float | None = None
+    cyp_terms: tuple[CypTerm, ...] = ()
+    target_binding: tuple[TargetBinding, ...] = ()
     gut_extraction_eg: float = 0.0
+    skin_layers: SkinLayers | None = None
     name: str = "compound"
 
     def __post_init__(self) -> None:
@@ -106,8 +125,14 @@ class RunSpec:
             raise ValueError("qt_ic50_nm must be positive")
         if self.dili_ic50_nm is not None and self.dili_ic50_nm <= 0:
             raise ValueError("dili_ic50_nm must be positive")
+        if self.dili_immune_ic50_nm is not None and self.dili_immune_ic50_nm <= 0:
+            raise ValueError("dili_immune_ic50_nm must be positive")
+        if self.dili_immune_weight is not None and not 0.0 <= self.dili_immune_weight <= 1.0:
+            raise ValueError("dili_immune_weight must be in [0, 1]")
         if self.cns_ic50_nm is not None and self.cns_ic50_nm <= 0:
             raise ValueError("cns_ic50_nm must be positive")
+        if self.beta_block_ic50_nm is not None and self.beta_block_ic50_nm <= 0:
+            raise ValueError("beta_block_ic50_nm must be positive")
         for label, value in (
             ("cl_sec_l_h", self.cl_sec_l_h),
             ("cl_bil_l_h", self.cl_bil_l_h),
@@ -121,8 +146,18 @@ class RunSpec:
             raise ValueError("hepatic_vmax_mg_h and hepatic_km_mg_l must be set together")
         if self.hepatic_km_mg_l is not None and self.hepatic_km_mg_l <= 0:
             raise ValueError("hepatic_km_mg_l must be positive")
+        if self.cyp_terms and self.hepatic_vmax_mg_h is not None:
+            raise ValueError(
+                "cyp_terms replaces the lumped hepatic clearance; "
+                "hepatic_vmax_mg_h/hepatic_km_mg_l must be left unset"
+            )
         if not (0.0 <= self.gut_extraction_eg <= 0.9):
             raise ValueError("gut_extraction_eg must be in [0, 0.9]")
+        for tb in self.target_binding:
+            if tb.tissue not in TISSUE_LIST:
+                raise ValueError(
+                    f"target_binding tissue {tb.tissue!r} not in model tissues {TISSUE_LIST}"
+                )
 
 
 @dataclass(slots=True)
@@ -153,8 +188,10 @@ class ExposureProfile:
     qt_ic50_nm: float | None
     dili_ic50_nm: float | None
     cns_ic50_nm: float | None
+    dili_immune_ic50_nm: float | None = None
     cns_anchored: bool = False
     cns_kpu_brain: float = 1.0
+    beta_block_ic50_nm: float | None = None
 
 
 @dataclass(slots=True)
@@ -276,7 +313,9 @@ class RunResult:
                     "kidney_cmax_free_nm": round(self.exposure.kidney_cmax_free_nm, 3),
                     "qt_ic50_nm": self.exposure.qt_ic50_nm,
                     "dili_ic50_nm": self.exposure.dili_ic50_nm,
+                    "dili_immune_ic50_nm": self.exposure.dili_immune_ic50_nm,
                     "cns_ic50_nm": self.exposure.cns_ic50_nm,
+                    "beta_block_ic50_nm": self.exposure.beta_block_ic50_nm,
                 },
             },
             "r_verify": None if self.r_verify is None else self.r_verify.to_dict(),
@@ -405,8 +444,10 @@ def _cardiac_tone_scale(fc: NDArray | None) -> float:
     ~0 fold), so only amplification above baseline (the inotropic branch) lifts
     ``inotropy=chronotropy`` via ``clamp(1 + gain*(fc-1), 1, max)``; a baseline
     or suppressed readout leaves tone exactly 1.0.  Sympathetic *suppression*
-    is not encoded by this readout and is deferred (doc/05 4.3), so a benign
-    molecule never disturbs hemodynamic neutrality or the loop co-fraction.
+    is a separate, saturable Emax axis (`RunSpec.beta_block_ic50_nm` ->
+    `CardiacParams.sympathetic_tone`, doc/05 4.3), so a benign molecule with
+    no beta-block anchor never disturbs hemodynamic neutrality or the loop
+    co-fraction.
     """
     if fc is None:
         return 1.0
@@ -438,8 +479,11 @@ def _panel_model(spec: RunSpec) -> PBPKModel:
         cl_sec_l_h=spec.cl_sec_l_h,
         hepatic_vmax_mg_h=spec.hepatic_vmax_mg_h,
         hepatic_km_mg_l=spec.hepatic_km_mg_l,
+        cyp_terms=spec.cyp_terms,
         cl_bil_l_h=spec.cl_bil_l_h,
         k_bile_emptying_1h=spec.bile_emptying_1h,
+        target_binding=spec.target_binding,
+        mw_g_per_mol=spec.mw,
         dose_plan=spec.dose_plan,
         absorption=absorption,
     )
@@ -482,8 +526,11 @@ def _absorption_params(spec: RunSpec) -> AbsorptionParams:
     runs only), so a low-solubility dose spills undissolved mass to the
     colon/feces sink.
     """
-    if spec.sc_im_ka_per_h is not None:
-        return AbsorptionParams(k_depot_absorption=spec.sc_im_ka_per_h)
+    if spec.sc_im_ka_per_h is not None or spec.skin_layers is not None:
+        return AbsorptionParams(
+            k_depot_absorption=spec.sc_im_ka_per_h or 0.15,
+            skin_layers=spec.skin_layers,
+        )
     has_oral = any(ev.route is Route.ORAL for ev in spec.dose_plan.events)
     if not has_oral:
         return AbsorptionParams(gut_extraction_eg=spec.gut_extraction_eg)
@@ -537,6 +584,13 @@ def _organ_state(
     )
 
     liver_params = spec.liver_params or liver_params_from_panel(spec.panel)
+    if spec.dili_immune_ic50_nm is not None:
+        immune_weight = spec.dili_immune_weight if spec.dili_immune_weight is not None else 0.5
+        liver_params = replace(
+            liver_params,
+            immune_ic50_nm=spec.dili_immune_ic50_nm,
+            immune_weight=immune_weight,
+        )
 
     # Stage-3 pathway before the organ QST: the ERK/MAPK readout fold-change is
     # the proliferation signal that modulates hepatocyte regeneration, closing
@@ -571,6 +625,17 @@ def _organ_state(
     if proliferation is not None:
         tone = _cardiac_tone_scale(proliferation)
         cardiac_params = CardiacParams(inotropy=tone, chronotropy=tone)
+    if spec.beta_block_ic50_nm is not None:
+        heart_free_nm = np.asarray(free_mg_l_to_nm(pk.unbound_tissues["heart"], spec.mw))
+        sym_tone = sympathetic_tone_from_emax(
+            float(np.mean(heart_free_nm)), spec.beta_block_ic50_nm
+        )
+        base = cardiac_params or CardiacParams()
+        cardiac_params = CardiacParams(
+            inotropy=base.inotropy,
+            chronotropy=base.chronotropy,
+            sympathetic_tone=sym_tone,
+        )
     cardiac = simulate_cardiac(
         pk.t, block, model.physiology, params=cardiac_params, n_eval=spec.n_eval
     )
@@ -691,9 +756,11 @@ def run_pipeline(spec: RunSpec) -> RunResult:
         kidney_cmax_free_nm=_mg_l_to_nm(float(np.max(kidney_free)), spec.mw),
         qt_ic50_nm=_qt_ic50(spec),
         dili_ic50_nm=_dili_ic50(spec),
+        dili_immune_ic50_nm=spec.dili_immune_ic50_nm,
         cns_ic50_nm=spec.cns_ic50_nm or _CNS_IC50_DEFAULT_NM,
         cns_anchored=spec.cns_ic50_nm is not None,
         cns_kpu_brain=cns_kpu_brain,
+        beta_block_ic50_nm=spec.beta_block_ic50_nm,
     )
 
     toxicity = _score_clinical(organ, exposure, spec.admet)
@@ -1024,7 +1091,13 @@ def spec_from_admet(
     bile_emptying_1h: float = 1.0,
     hepatic_vmax_mg_h: float | None = None,
     hepatic_km_mg_l: float | None = None,
+    cyp_terms: tuple[CypTerm, ...] = (),
+    target_binding: tuple[TargetBinding, ...] = (),
     gut_extraction_eg: float = 0.0,
+    skin_layers: SkinLayers | None = None,
+    beta_block_ic50_nm: float | None = None,
+    dili_immune_ic50_nm: float | None = None,
+    dili_immune_weight: float | None = None,
 ) -> RunSpec:
     """Build a ``RunSpec`` for a novel molecule entirely from ADMET-AI.
 
@@ -1075,7 +1148,13 @@ def spec_from_admet(
         bile_emptying_1h=bile_emptying_1h,
         hepatic_vmax_mg_h=hepatic_vmax_mg_h,
         hepatic_km_mg_l=hepatic_km_mg_l,
+        cyp_terms=cyp_terms,
+        target_binding=target_binding,
         gut_extraction_eg=gut_extraction_eg,
+        skin_layers=skin_layers,
+        beta_block_ic50_nm=beta_block_ic50_nm,
+        dili_immune_ic50_nm=dili_immune_ic50_nm,
+        dili_immune_weight=dili_immune_weight,
     )
 
 

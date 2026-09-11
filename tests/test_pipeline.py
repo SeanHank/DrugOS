@@ -21,6 +21,8 @@ from drugos.pipeline import (
     run_pipeline,
     spec_from_benchmark_data,
 )
+from drugos.pk.pbpk_build import CypTerm, TargetBinding
+from drugos.target.targets import Target
 
 
 def _bench(**kw: object) -> _BenchmarkLike:
@@ -633,6 +635,10 @@ def test_spec_from_admet_builds_full_chain_input() -> None:
     assert ext.gut_extraction_eg == 0.4
     assert pl._absorption_params(ext).gut_extraction_eg == 0.4
 
+    terms = (CypTerm(isoform="CYP3A4", km_mg_l=1.0, vmax_mg_h=7.8),)
+    cyber = pl.spec_from_admet(mol, admet, profile, plan, cyp_terms=terms)
+    assert cyber.cyp_terms == terms
+
 
 def test_run_spec_stage1_realism_wiring(fast_warfarin: RunSpec) -> None:
     # The pipeline threads the optional Stage-1 realism terms from the spec
@@ -668,8 +674,62 @@ def test_run_spec_rejects_bad_stage1_params(fast_warfarin: RunSpec) -> None:
     with pytest.raises(ValueError):
         replace(fast_warfarin, gut_extraction_eg=-0.1)
     with pytest.raises(ValueError):
+        replace(
+            fast_warfarin,
+            cyp_terms=(CypTerm(isoform="CYP3A4", km_mg_l=1.0, vmax_mg_h=1.0),),
+            hepatic_vmax_mg_h=5.0,
+            hepatic_km_mg_l=2.0,  # cyp_terms and lumped MM are mutually exclusive
+        )
+
+
+def test_panel_model_wires_cyp_terms(fast_warfarin: RunSpec) -> None:
+    terms = (CypTerm(isoform="CYP3A4", km_mg_l=1.0, vmax_mg_h=7.8),)
+    spec = replace(fast_warfarin, cyp_terms=terms)
+    assert pl._panel_model(spec).cyp_terms == terms
+    with pytest.raises(ValueError):
         replace(fast_warfarin, gut_extraction_eg=1.0)
+
+
+def test_panel_model_wires_target_binding(fast_warfarin: RunSpec) -> None:
+    target = Target(
+        name="TMDD site",
+        kd_nm=1.5,
+        kon_nm_h=0.5,
+        r0_nm=800.0,
+        rho_h=0.08,
+        kint_h=0.25,
+    )
+    spec = replace(
+        fast_warfarin,
+        target_binding=(TargetBinding(tissue="gut", target=target),),
+        include_pathway=False,
+        feedback_loop=0,
+    )
+    panel = pl._panel_model(spec)
+    assert panel.target_binding == spec.target_binding
+    assert panel.mw_g_per_mol == spec.mw
+    assert pl.run_pipeline(spec).pk.tmdd is not None
+    with pytest.raises(ValueError):
+        replace(fast_warfarin, target_binding=(TargetBinding(tissue="bogus", target=target),))
     assert replace(fast_warfarin, bile_emptying_1h=0.5).bile_emptying_1h == 0.5
+
+
+def test_panel_model_wires_skin_layers(fast_warfarin: RunSpec) -> None:
+    from drugos.inputs.parse_dosing import build_dose_plan
+    from drugos.pk.skin import SkinLayers
+
+    spec = replace(
+        fast_warfarin,
+        skin_layers=SkinLayers(sc_thickness_um=20.0),
+        include_pathway=False,
+        feedback_loop=0,
+        dose_plan=build_dose_plan(route="transdermal", amount_mg=10.0, interval_h=0.0, n_doses=1),
+    )
+    panel = pl._panel_model(spec)
+    assert panel.absorption.skin_layers == spec.skin_layers
+    run = pl.run_pipeline(spec)
+    assert run.pk.skin is not None
+    assert run.pk.skin["absorbed_mg"][-1] > 0.0
 
 
 def test_cardiac_tone_scale_clamps_and_neutral_below_baseline() -> None:
@@ -686,6 +746,58 @@ def test_cardiac_tone_scale_clamps_and_neutral_below_baseline() -> None:
     high = pl._cardiac_tone_scale(np.full_like(t, 10.0))
     assert high == pytest.approx(1.3)
     assert isinstance(pl._cardiac_tone_scale(np.full_like(t, 2.0)), float)
+
+
+def test_beta_block_ic50_wires_sympathetic_tone_and_hemodynamics(
+    fast_warfarin: RunSpec,
+) -> None:
+    base = run_pipeline(replace(fast_warfarin, beta_block_ic50_nm=None))
+    hard = run_pipeline(replace(fast_warfarin, beta_block_ic50_nm=0.01))
+    soft = run_pipeline(replace(fast_warfarin, beta_block_ic50_nm=1000.0))
+    assert base.exposure.beta_block_ic50_nm is None
+    assert hard.exposure.beta_block_ic50_nm == pytest.approx(0.01)
+    assert base.organ.cardiac.co_l_min > hard.organ.cardiac.co_l_min
+    assert hard.organ.cardiac.co_l_min < soft.organ.cardiac.co_l_min
+    assert hard.organ.cardiac.hr_bpm < base.organ.cardiac.hr_bpm
+    assert hard.organ.cardiac.sv_ml < base.organ.cardiac.sv_ml
+
+
+def test_run_spec_rejects_nonpositive_beta_block_ic50(fast_warfarin: RunSpec) -> None:
+    with pytest.raises(ValueError, match="beta_block_ic50_nm"):
+        replace(fast_warfarin, beta_block_ic50_nm=-5.0)
+    with pytest.raises(ValueError, match="beta_block_ic50_nm"):
+        replace(fast_warfarin, beta_block_ic50_nm=0.0)
+
+
+def test_dili_immune_ic50_wires_liver_immune_axis(fast_warfarin: RunSpec) -> None:
+    base = run_pipeline(replace(fast_warfarin, dili_immune_ic50_nm=None))
+    active = run_pipeline(
+        replace(
+            fast_warfarin,
+            dili_immune_ic50_nm=50.0,
+            dili_immune_weight=1.0,
+        )
+    )
+    assert base.exposure.dili_immune_ic50_nm is None
+    assert active.exposure.dili_immune_ic50_nm == pytest.approx(50.0)
+    # Immune state is driven by the hazard regardless of weight; verify wiring.
+    assert active.organ.liver.immune.max() > 0.01
+    # With weight>0 the immune axis loads the stress; dead may differ slightly.
+    assert base.organ.liver.immune.max() < 1e-6
+
+
+def test_dili_immune_weight_inert_when_zero(fast_warfarin: RunSpec) -> None:
+    r = run_pipeline(replace(fast_warfarin, dili_immune_ic50_nm=10.0, dili_immune_weight=0.0))
+    # The hazard drives the immune response state, but weight=0 means it
+    # never loads combined_stress, so dead_frac stays baseline.
+    assert r.organ.liver.immune.max() > 0.01
+
+
+def test_run_spec_rejects_bad_dili_immune(fast_warfarin: RunSpec) -> None:
+    with pytest.raises(ValueError, match="dili_immune_ic50_nm"):
+        replace(fast_warfarin, dili_immune_ic50_nm=-1.0)
+    with pytest.raises(ValueError, match="dili_immune_weight"):
+        replace(fast_warfarin, dili_immune_weight=1.5)
 
 
 def _report(risk: float) -> ToxicityReport:

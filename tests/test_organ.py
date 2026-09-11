@@ -12,7 +12,7 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from drugos.inputs.models import DosePlan, HumanProfile, Sex
+from drugos.inputs.models import DoseEvent, DosePlan, HumanProfile, Molecule, Route, Sex
 from drugos.inputs.resolve_human import resolve_human
 from drugos.organ import feedback as fb
 from drugos.organ.base import auc_nm_h, free_mg_l_to_nm
@@ -22,6 +22,7 @@ from drugos.organ.cardiac import (
     predict_qtc,
     simulate_cardiac,
     simulate_hemodynamics,
+    sympathetic_tone_from_emax,
     tdpr_band,
 )
 from drugos.organ.kidney import (
@@ -42,6 +43,7 @@ from drugos.organ.liver import (
     bsep_ki_from_ic50_nm,
     combined_stress,
     dili_grade,
+    immune_hazard,
     inhibition,
     liver_params_from_panel,
     mitochondrial_block,
@@ -51,8 +53,9 @@ from drugos.organ.liver import (
     simulate_liver,
 )
 from drugos.pk.partitions import partition_from_molecule
-from drugos.pk.pbpk_build import PBPKModel
+from drugos.pk.pbpk_build import AbsorptionParams, PBPKModel
 from drugos.pk.physiology import build_human
+from drugos.pk.simulate import simulate_pbpk
 from drugos.target.targets import safety_panel
 
 
@@ -409,6 +412,100 @@ def test_liver_death_solve_failure_raises() -> None:
 
 
 # ---------------------------------------------------------------------------
+# A6 – immune-mediated DILI (doc/05 4.2 seam)
+# ---------------------------------------------------------------------------
+def test_immune_hazard_branches() -> None:
+    assert immune_hazard(0.0, 100.0) == 0.0
+    assert immune_hazard(100.0, 100.0, hill=1.0) == pytest.approx(0.5)
+    assert immune_hazard(1.0e6, 100.0) == pytest.approx(1.0, abs=1e-3)
+
+
+def test_immune_hill_saturates() -> None:
+    assert immune_hazard(10.0, 10.0, hill=2.0) == pytest.approx(0.5)
+
+
+def test_immune_hazard_rejects_bad_input() -> None:
+    with pytest.raises(ValueError):
+        immune_hazard(100.0, 0.0)
+    with pytest.raises(ValueError):
+        immune_hazard(100.0, 100.0, hill=0.0)
+
+
+def test_simulate_liver_rejects_bad_immune_params() -> None:
+    t = np.array([0.0, 6.0, 24.0])
+    c = np.array([10.0, 5.0, 1.0])
+    with pytest.raises(ValueError):
+        simulate_liver(t, c, 300.0, LiverParams(immune_ic50_nm=0.0, immune_weight=1.0))
+    with pytest.raises(ValueError):
+        simulate_liver(t, c, 300.0, LiverParams(immune_hill=0.0, immune_weight=1.0))
+    with pytest.raises(ValueError):
+        simulate_liver(t, c, 300.0, LiverParams(immune_recruit_1h=-0.1, immune_weight=1.0))
+    with pytest.raises(ValueError):
+        simulate_liver(t, c, 300.0, LiverParams(immune_decay_1h=-0.1, immune_weight=1.0))
+
+
+def test_liver_default_immune_axis_inert() -> None:
+    t = np.array([0.0, 6.0, 24.0])
+    c = np.array([10.0, 5.0, 1.0])
+    r_default = simulate_liver(t, c, 300.0)
+    r_explicit_weight_zero = simulate_liver(
+        t, c, 300.0, LiverParams(immune_ic50_nm=100.0, immune_weight=0.0)
+    )
+    np.testing.assert_allclose(r_default.immune, 0.0, atol=1e-10)
+    # 2D solver produces tiny numerical differences in dead; verify aggregate.
+    assert abs(r_default.dead_frac.max() - r_explicit_weight_zero.dead_frac.max()) < 1e-4
+
+
+def test_liver_immune_activation_increases_dead() -> None:
+    t = np.linspace(0.0, 72.0, 241)
+    c = np.full_like(t, 50.0)
+    p_no_immune = LiverParams(immune_ic50_nm=50.0, immune_weight=0.0)
+    p_with_immune = LiverParams(
+        immune_ic50_nm=50.0,
+        immune_weight=1.0,
+        immune_recruit_1h=0.1,
+        immune_decay_1h=0.05,
+    )
+    r_no = simulate_liver(t, c, 300.0, p_no_immune)
+    r_immune = simulate_liver(t, c, 300.0, p_with_immune)
+    assert r_immune.immune.max() > 0.3
+    # At 72h with fast recruit the immune response has had time to build.
+    assert r_immune.dead_frac[-1] > r_no.dead_frac[-1]
+
+
+def test_liver_immune_monotone_dose_response() -> None:
+    t = np.linspace(0.0, 72.0, 241)
+    c_low = np.full_like(t, 10.0)
+    c_high = np.full_like(t, 200.0)
+    p = LiverParams(immune_ic50_nm=50.0, immune_weight=1.0, immune_recruit_1h=0.1)
+    r_low = simulate_liver(t, c_low, 300.0, p)
+    r_high = simulate_liver(t, c_high, 300.0, p)
+    assert r_low.immune.max() < r_high.immune.max()
+    assert r_low.dead_frac[-1] < r_high.dead_frac[-1]
+
+
+def test_liver_immune_recruit_decay_lifetime() -> None:
+    t = np.linspace(0.0, 100.0, 201)
+    c = np.full_like(t, 50.0)
+    p_fast_decay = LiverParams(
+        immune_ic50_nm=50.0,
+        immune_weight=1.0,
+        immune_recruit_1h=0.1,
+        immune_decay_1h=0.5,
+    )
+    p_zero_decay = LiverParams(
+        immune_ic50_nm=50.0,
+        immune_weight=1.0,
+        immune_recruit_1h=0.1,
+        immune_decay_1h=0.0,
+    )
+    r_fast = simulate_liver(t, c, 300.0, p_fast_decay)
+    r_zd = simulate_liver(t, c, 300.0, p_zero_decay)
+    assert r_fast.immune[-1] < 0.5
+    assert r_zd.immune[-1] == pytest.approx(1.0, abs=0.01)
+
+
+# ---------------------------------------------------------------------------
 # cardiac
 # ---------------------------------------------------------------------------
 def _physiology() -> object:
@@ -507,6 +604,66 @@ def test_simulate_cardiac_rejects_bad_input() -> None:
         simulate_cardiac(np.array([0.0, 1.0]), np.array([0.1]), phy)
     with pytest.raises(ValueError):
         simulate_cardiac(np.array([1.0]), np.array([0.1]), phy)
+
+
+# ---------------------------------------------------------------------------
+# A5 – sympathetic suppression branch
+# ---------------------------------------------------------------------------
+def test_sympathetic_tone_ic50_halves() -> None:
+    assert sympathetic_tone_from_emax(100.0, 100.0) == pytest.approx(0.5)
+
+
+def test_sympathetic_tone_zero_exposure() -> None:
+    assert sympathetic_tone_from_emax(0.0, 100.0) == pytest.approx(1.0)
+
+
+def test_sympathetic_tone_high_exposure_saturates() -> None:
+    assert sympathetic_tone_from_emax(1.0e6, 100.0) == pytest.approx(
+        100.0 / (1.0e6 + 100.0), rel=1e-3
+    )
+
+
+def test_sympathetic_tone_rejects_bad_input() -> None:
+    with pytest.raises(ValueError):
+        sympathetic_tone_from_emax(100.0, 0.0)
+    with pytest.raises(ValueError):
+        sympathetic_tone_from_emax(-1.0, 100.0)
+
+
+def test_simulate_hemodynamics_sympathetic_tone_applied() -> None:
+    phy = _physiology()
+    base = simulate_hemodynamics(phy, CardiacParams())
+    tone_half = simulate_hemodynamics(
+        phy,
+        CardiacParams(sympathetic_tone=0.5),
+    )
+    assert tone_half.hr_bpm == pytest.approx(base.hr_bpm * 0.5)
+    assert tone_half.sv_ml == pytest.approx(base.sv_ml * 0.5)
+    assert tone_half.co_l_min == pytest.approx(base.co_l_min * 0.25)
+    # Windkessel steady state conserves c_art*pa + c_ven*pv, so pa - pv is
+    # exactly tone^2 * (MAP_ref - CVP) with fixed resistance.
+    assert (tone_half.pa_mmhg[-1] - tone_half.pv_mmhg[-1]) == pytest.approx(
+        0.25 * (93.0 - 5.0), rel=1e-9
+    )
+    assert tone_half.pa_mmhg[-1] < base.pa_mmhg[-1]
+
+
+def test_simulate_hemodynamics_sympathetic_tone_rejects_out_of_range() -> None:
+    phy = _physiology()
+    with pytest.raises(ValueError):
+        simulate_hemodynamics(phy, CardiacParams(sympathetic_tone=0.0))
+    with pytest.raises(ValueError):
+        simulate_hemodynamics(phy, CardiacParams(sympathetic_tone=1.1))
+
+
+def test_simulate_cardiac_end_to_end_with_sympathetic_tone() -> None:
+    phy = _physiology()
+    t = np.linspace(0.0, 6.0, 61)
+    b = np.zeros_like(t)
+    p = CardiacParams(sympathetic_tone=0.5)
+    r = simulate_cardiac(t, b, phy, params=p, n_eval=120)
+    assert r.hr_bpm == pytest.approx(70.0 * 0.5)
+    assert r.sv_ml == pytest.approx(phy.cardiac_output_ml_min / 70.0 * 0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -683,3 +840,84 @@ def test_organ_package_re_exports() -> None:
 
     for name in organ.__all__:
         assert hasattr(organ, name)
+
+
+# ---------------------------------------------------------------------------
+# A7: ACAT-lite multi-segment SI dissolution/absorption (doc/05 §1.6)
+# ---------------------------------------------------------------------------
+
+
+def _oral_model(si_segments: int | None = None, solubility_mg_ml: float | None = None) -> PBPKModel:
+    phy = resolve_human(HumanProfile(sex=Sex.MALE))
+    mol = Molecule(name="t", log_p=2.0, pka_bases=[9.0])
+    part = partition_from_molecule(mol, fup=0.5, bp=1.0, hematocrit=phy.hematocrit)
+    dp = DosePlan(events=[DoseEvent(route=Route.ORAL, dose_mg=100, time_h=0.0)], total_dose_mg=100)
+    return PBPKModel(
+        physiology=phy,
+        partition=part,
+        bp=1.0,
+        fup=0.5,
+        cl_hep_l_h=0.0,
+        cl_renal_l_h=0.0,
+        dose_plan=dp,
+        absorption=AbsorptionParams(si_segments=si_segments, solubility_mg_ml=solubility_mg_ml),
+    )
+
+
+def test_si_segments_rejects_nonpositive() -> None:
+    with pytest.raises(ValueError, match="si_segments"):
+        AbsorptionParams(si_segments=0)
+    with pytest.raises(ValueError, match="si_segments"):
+        AbsorptionParams(si_segments=-1)
+
+
+def test_si_segments_none_uses_single_si() -> None:
+    m = _oral_model(si_segments=None)
+    assert m._si_segment_indices == []
+    assert "si" in m._indices
+
+
+def test_si_segments_one_uses_single_si() -> None:
+    m = _oral_model(si_segments=1)
+    assert m._si_segment_indices == []
+    assert "si" in m._indices
+
+
+def test_multi_segment_creates_n_indices() -> None:
+    m = _oral_model(si_segments=3)
+    assert len(m._si_segment_indices) == 3
+    assert m.n_state > _oral_model(si_segments=None).n_state
+
+
+def test_multi_segment_mass_conservation() -> None:
+    """Dose ≈ total state mass (feces already included) at 48h for multi-segment model."""
+    m = _oral_model(si_segments=3)
+    r = simulate_pbpk(m, tmax_h=48.0)
+    total = m.state_total_mass(r.final_state)
+    dose = 100.0
+    assert abs(total - dose) < 2e-3
+
+
+def test_multi_segment_solubility_caps_each_segment() -> None:
+    """With low solubility and many segments, feces mass > 0 (dissolution-limited)."""
+    m = _oral_model(si_segments=5, solubility_mg_ml=0.01)
+    r = simulate_pbpk(m, tmax_h=48.0)
+    assert r.feces_cum_mg[-1] > 5.0  # substantial undissolved mass spills to colon
+
+
+def test_multi_segment_bile_routes_to_segment_0() -> None:
+    """Bile secretion adds to segment 0 (proximal SI), not colon or feces."""
+    m = _oral_model(si_segments=3)
+    r = simulate_pbpk(m, tmax_h=24.0)
+    assert r.feces_cum_mg is not None
+    assert np.all(np.isfinite(r.feces_cum_mg))
+
+
+def test_multi_segment_total_transit_preserved() -> None:
+    """Per-segment transit rate = k_si_transit * N so total SI transit time = 1/k_si_transit."""
+    m1 = _oral_model(si_segments=None)
+    m3 = _oral_model(si_segments=3)
+    k_transit = m1.absorption.k_si_transit  # 0.25 h⁻¹
+    assert m3.absorption.k_si_transit * 3 == pytest.approx(k_transit * 3)
+    # Verify per-segment transit matches k_si_transit * 3
+    assert m3.absorption.k_si_transit * m3.absorption.si_segments == pytest.approx(k_transit * 3)

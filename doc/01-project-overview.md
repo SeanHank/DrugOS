@@ -7,7 +7,7 @@
 | Project name | DrugOS |
 | Author | Sean Hank |
 | License | AGPLv3 (GNU Affero General Public License v3.0; the repository ships a `LICENSE` file) |
-| Current version | 2026.9.0 |
+| Current version | 2026.9.1 |
 | Primary language | Python (see `06-technology-stack.md`) |
 
 ### 0.1 Versioning Convention (project-wide)
@@ -20,8 +20,8 @@ All artifacts of the project (packages, releases, model snapshots, documents) us
 
 Rules:
 - Every new release within the same month increments `V` (0, 1, 2, ...).
-- When the month (or year) rolls over, `V` resets to **0** (e.g., 2026.9.0, 2026.9.0, ..., 2026.10.0).
-- The baseline release documented here is **2026.9.0**; all earlier "v-major.minor" conventions are replaced by this scheme.
+- When the month (or year) rolls over, `V` resets to **0** (e.g., 2026.9.1, 2026.9.1, ..., 2026.10.0).
+- The baseline release documented here is **2026.9.1**; all earlier "v-major.minor" conventions are replaced by this scheme.
 
 ## 1. Vision
 
@@ -86,13 +86,13 @@ All four dimensions combine arbitrarily (any structure x any route x any dose x 
 
 ## 5. Scope
 
-**In scope (baseline 2026.9.0):**
+**In scope (baseline 2026.9.1):**
 - Small-molecule drugs with known or inferable targets
-- Intravenous, oral, subcutaneous, intramuscular and transdermal (depot) administration routes
+- Intravenous, oral, subcutaneous, intramuscular and transdermal administration routes (transdermal as first-order depot by default, finite-dose multi-layer skin-permeation membrane opt-in, doc/05 §1.4)
 - Liver-centric toxicity (DILI) with secondary coverage of cardiovascular (QT) and kidney endpoints
 - Adult healthy and common-disease virtual populations
 
-**Explicitly out of scope (baseline 2026.9.0, deferred):**
+**Explicitly out of scope (baseline 2026.9.1, deferred):**
 - Biologics/antibodies (require FcRn, immunogenicity sub-models)
 - Multi-drug interaction networks beyond a single co-administered pair
 - 3D spatial (finite-element) organ models; the system uses lumped-compartment organ models (the arbitrary input configurability in section 3.1 applies to model *inputs*; the modeled physiology depth may be expanded in later releases)

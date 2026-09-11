@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "drugos"
-version = "2026.9.0"
+version = "2026.9.1"
 description = "Multiscale mechanism-based model of drug response in the human body: drug -> concentration -> target -> pathway -> organ -> phenotype"
 readme = "README.md"
 requires-python = ">=3.11"

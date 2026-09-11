@@ -35,12 +35,32 @@ def test_target_defaults_and_koff() -> None:
         Target(name="bad", kd_nm=1.0, r0_nm=0.0)
 
 
-def test_kd_from_ic50() -> None:
+def test_kd_from_ic50_cheng_prusoff() -> None:
     base = Target(name="BSEP (cholestasis)", kd_nm=90000.0)
+    # Assay convention [S]/Km = 1 -> Ki = IC50/2 (conservative).
     meas = base.kd_from_ic50_um(90.0)
     assert not meas.low_confidence
-    assert meas.kd_nm == pytest.approx(90000.0)
+    assert meas.kd_nm == pytest.approx(45000.0)
     assert meas.name == base.name
+    # Ratio 0 -> Ki = IC50 exactly; larger ratios sharpen the affinity.
+    assert base.kd_from_ic50_um(90.0, substrate_ratio=0.0).kd_nm == pytest.approx(90000.0)
+    assert base.kd_from_ic50_um(90.0, substrate_ratio=3.0).kd_nm == pytest.approx(22500.0)
+    with pytest.raises(ValueError):
+        base.kd_from_ic50_um(0.0)
+    with pytest.raises(ValueError):
+        base.kd_from_ic50_um(90.0, substrate_ratio=-1.0)
+
+
+def test_cheng_prusoff_helper() -> None:
+    from drugos.target.targets import cheng_prusoff_ki_nm
+
+    assert cheng_prusoff_ki_nm(1.0, 0.0) == pytest.approx(1000.0)
+    assert cheng_prusoff_ki_nm(1.0, 1.0) == pytest.approx(500.0)
+    assert cheng_prusoff_ki_nm(1.0, 9.0) == pytest.approx(100.0)
+    with pytest.raises(ValueError):
+        cheng_prusoff_ki_nm(-1.0, 1.0)
+    with pytest.raises(ValueError):
+        cheng_prusoff_ki_nm(1.0, -0.5)
 
 
 def test_safety_panel_composition() -> None:
