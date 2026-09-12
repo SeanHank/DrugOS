@@ -1,8 +1,9 @@
 """ACAT-lite multi-segment SI dissolution/absorption (L2, doc/05 §1.6).
 
 The baseline oral absorption is a single small-intestinal (SI) compartment.
-The deferred item asked for multi-segment SI dissolution resolution.  That is
-now ``PBPKModel.absorption.si_segments`` (off by default): N equal-volume SI
+An earlier roadmap item asked for multi-segment SI dissolution resolution.
+That is now ``PBPKModel.absorption.si_segments`` (model-layer default-off;
+auto-engaged by the pipeline in full fidelity): N equal-volume SI
 sub-compartments, each with its own dissolution cap and first-order
 absorption/transit, with bile entering segment 0 (proximal SI).
 
@@ -15,7 +16,8 @@ The checks pin, on a kp=1 flat-partition model:
 - more segments shifts absorption later (proximal segments see higher
   luminal concentration, distal segments see residual; total transit time
   is preserved);
-- off by default (n_state matches single-SI baseline);
+- model-layer default-off (n_state matches single-SI baseline); the
+  model with the term absent is the baseline identity
 - degenerate ``si_segments=0`` is rejected.
 """
 
@@ -180,7 +182,10 @@ def case_acat_multisegment_si() -> CaseResult:
         f"mass_err={mass_err:.4f}, feces_diff={feces_diff:.2f}"
     )
     return CaseResult(
-        "ACAT-lite multi-segment SI dissolution/absorption (off by default)",
+        (
+            "ACAT-lite multi-segment SI dissolution/absorption "
+            "(model default-off; full fidelity auto-engages)"
+        ),
         ok,
         metrics,
         notes,

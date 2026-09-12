@@ -42,8 +42,10 @@ dermis diffusion plus dermal capillary uptake into venous blood (doc/05 1.4).
 Every realistic extension (secretory/reabsorptive ``cl_sec``, MM hepatic
 ``hepatic_vmax``/``hepatic_km``, per-CYP ``cyp_terms``, biliary
 ``cl_bil``/``k_bile_emptying``, gut-wall ``gut_extraction_eg``, TMDD
-``target_binding``, skin ``skin_layers``) is off by default, so baseline runs
-reproduce the validated linear-clearance behavior exactly.
+``target_binding``, skin ``skin_layers``) is off at the *model* layer, so
+baseline (``fidelity="baseline"``) runs reproduce the validated
+linear-clearance behavior exactly; ``pipeline._engage_full_fidelity`` is what
+auto-engages these terms in default full-fidelity runs.
 """
 
 from __future__ import annotations
@@ -101,7 +103,7 @@ class AbsorptionParams:
     SI when ``si_segments`` is None); extra dose stays undissolved and transits
     onward to the colon/feces.
 
-    **ACAT-lite multi-segment SI (off by default).**
+    **ACAT-lite multi-segment SI (model default-off; auto-engaged in full fidelity).**
     ``si_segments`` splits the small intestine into N sequential sub-compartments
     of equal volume ``gi_volume_ml / N`` mL, each with its own dissolution cap
     and first-order absorption/transit; total SI transit time is preserved
@@ -218,7 +220,8 @@ class TargetBinding:
     tissue so that receptor association, dissociation and complex
     internalization consume and ultimately clear drug directly inside the
     ODE — the monolithic TMDD limit that the sequential pipeline only
-    approximates via the opt-in ``feedback_loop`` driver (doc/05 2.4-2.5).
+    approximates via the auto-engaged-to-full ``feedback_loop`` driver
+    (doc/05 2.4-2.5).
 
     Binding is driven by the *unbound* tissue concentration, converted from
     mg/L to nM with the model molecular weight, and uses the same turnover
@@ -500,7 +503,8 @@ class PBPKModel:
         col_resorb = abs_params.k_colon_absorption * a_col
         dydt[self._indices["stomach"]] = -st_out - abs_params.k_stomach_absorption * a_st
 
-        # ACAT-lite multi-segment SI (doc/05 §1.6, off by default).
+        # ACAT-lite multi-segment SI (doc/05 §1.6; model-layer default-off,
+        # auto-engaged in full fidelity).
         n_seg = abs_params.si_segments
         if n_seg is not None and n_seg > 1 and self._si_segment_indices:
             seg_k_transit = abs_params.k_si_transit * n_seg  # preserve total SI transit time
@@ -575,7 +579,8 @@ class PBPKModel:
         dydt[self._indices["venous"]] += depot_out * abs_params.depot_bioavailability
         dydt[self._indices["feces"]] += depot_out * (1.0 - abs_params.depot_bioavailability)
 
-        # Multi-layer transdermal skin permeation (doc/05 1.4, off by default):
+        # Multi-layer transdermal skin permeation (doc/05 1.4; model-layer
+        # default-off, auto-engaged in full fidelity):
         # reversible diffusion links surface -> SC -> VE -> dermis followed by
         # first-order dermal capillary removal into venous blood; the series
         # fluxes cancel inside the membrane so the skin block's net drug

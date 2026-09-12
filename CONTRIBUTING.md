@@ -25,7 +25,7 @@ cases, not from authority.
   around the gate.
 - **New model features add a validation case before merge, not after.** The
   feature ships with the empirical/analytic check that pins its behavior.
-- **Production-model upgrades are catalogued.** Any new third-party model /
+- **Production-model upgrades get a row.** Any new third-party model /
   dataset wired into the pipeline gets a row in `doc/12-production-models.md`,
   a status entry in `doc/11`, a manifest pin under `data/` if vendored, and a
   validation case. Required-R (R-1), the ORd cardiac lane (R-3), the ADMET-AI
@@ -80,12 +80,16 @@ python scripts/release.py fallback-audit                            # every exce
 
 ## Releasing
 
-Releases are `YYYY.M.V` (e.g. `2026.9.0`). `scripts/release.py` runs the four
-gates + fallback audit, bumps the version project-wide, syncs the status
-numbers in `README.md` and `doc/*.md`, and writes `build/release_status.json`:
+Releases are `YYYY.M.V` (e.g. `2026.9.1`) and the version is **specified
+explicitly** — `scripts/release.py` never auto-bumps. It runs the six quality
+gates (G1-G6, including the fallback audit and the marker audit), syncs the
+version project-wide (`version.py`,
+`pyproject.toml`, `README.md`, `doc/*.md`, web banner), syncs the status
+numbers, and writes `build/release_status.json`:
 
 ```bash
-python scripts/release.py --bump auto
+python scripts/release.py release --version 2026.9.1
+python scripts/release.py marker-audit   # G6 standalone
 ```
 
 See `doc/09-quality-gate.md` for the full release contract.

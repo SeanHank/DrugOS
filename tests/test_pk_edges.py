@@ -231,18 +231,18 @@ def test_bioavailable_fraction_depot_uses_availability() -> None:
     td = _model_with_abs(Route.TRANSDERMAL, 10.0, 0.0, depot_bioavailability=0.1)
     assert bioavailable_fraction(td, Route.TRANSDERMAL, 10.0, np.array([0.0])) == pytest.approx(0.1)
     # A (theoretically) out-of-range availability is clamped onto [0, 1].
-    stub = SimpleNamespace(
+    probe = SimpleNamespace(
         absorption=SimpleNamespace(depot_bioavailability=1.3),
         physiology=SimpleNamespace(organ_flow={"liver": 1.4}),
         cl_hep_l_h=0.0,
     )
-    assert bioavailable_fraction(stub, Route.INTRAMUSCULAR, 10.0, None) == pytest.approx(1.0)
-    stub_low = SimpleNamespace(
+    assert bioavailable_fraction(probe, Route.INTRAMUSCULAR, 10.0, None) == pytest.approx(1.0)
+    probe_low = SimpleNamespace(
         absorption=SimpleNamespace(depot_bioavailability=-0.5),
         physiology=SimpleNamespace(organ_flow={"liver": 1.4}),
         cl_hep_l_h=0.0,
     )
-    got = bioavailable_fraction(stub_low, Route.INTRAMUSCULAR, 10.0, np.array([0.0]))
+    got = bioavailable_fraction(probe_low, Route.INTRAMUSCULAR, 10.0, np.array([0.0]))
     assert got == pytest.approx(0.0)
 
 

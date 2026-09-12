@@ -1,7 +1,7 @@
 # Dataset Download-Status Checklist
 
 Status of every dataset the pipeline needs (`doc/10` details the science;
-`doc/04` the catalog; `data/README.md` the vendoring policy).
+`doc/04` the register; `data/README.md` the vendoring policy).
 
 **Legend**
 - `VENDORED` — on disk under `data/`, pinned by sha256 in `data/manifest.json`,
@@ -36,7 +36,7 @@ Status of every dataset the pipeline needs (`doc/10` details the science;
 | 16 | QTc / ΔQTc clinical reference distribution | Published cardio-safety aggregates | **NOT-DOWNLOADED** | ICH E14 / literature summary tables (no raw XML redistribution) |
 | 17 | Endpoint co-occurrence (SIDER / Offsides / FAERS) | SIDER (CC BY-NC-SA); Offsides; FAERS (public) | **NOT-DOWNLOADED** | SIDER/Offsides dumps; FAERS quarterly files (needs dedup script) |
 | 18 | Pathway kinetic rate constants (Kd/Vmax/kcat) | BRENDA, SABIO-RK | **NOT-DOWNLOADED** | via curated extraction, rate-limited API |
-| 18b | Ultrasensitive MAPK cascade SBML (pathway Stage-3 production anchor, R-5) | Huang & Ferrell 1996 via BioModels BIOMD0000000009 (CC0) | **VENDORED** | `data/models/huang1996-mapk-cascade.xml` (`sha256 1f95d793…ab98`); parsed by `drugos.pathway.sbml_pathway` via `python-libsbml` (pip, pinned `pyproject.toml`); drives the pipeline-default signal lane (readout PP_K). Stub `stubs/libsbml/` + doc/06 for G2 |
+| 18b | Ultrasensitive MAPK cascade SBML (pathway Stage-3 production anchor, R-5) | Huang & Ferrell 1996 via BioModels BIOMD0000000009 (CC0) | **VENDORED** | `data/models/huang1996-mapk-cascade.xml` (`sha256 1f95d793…ab98`); parsed by `drugos.pathway.sbml_pathway` via `python-libsbml` (pip, pinned `pyproject.toml`); drives the pipeline-default signal lane (readout PP_K). Typing packages under `stubs/libsbml/` + doc/06 keep G2 green against the untyped wheel. |
 | 19 | Safety-panel class priors (16 sites), organ IC50 priors, CTCAE ladders, toxicity fusion priors | Literature-derived class medians | N/A (hardcoded in `targets.py`/`organ/*`/`clinical/*`; URL-annotated references in code) | — |
 
 ## Summary

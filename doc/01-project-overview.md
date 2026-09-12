@@ -80,7 +80,7 @@ All four dimensions combine arbitrarily (any structure x any route x any dose x 
 
 1. **Mechanistic-first, data-driven where needed.** Use mechanistic ODE models for PK, target binding, and signaling; use machine learning only where the mechanism is unknown or too expensive to simulate (structure-to-ADME property prediction, binding-affinity estimation).
 2. **Multiscale integration via a common mathematical substrate.** All stages are expressed as coupled ODE systems so they can be composed into a single simulation or run as loosely coupled sub-models through a defined data contract (concentration time series as wallet-passing interface).
-3. **Transparency and uncertainty.** Every predicted quantity carries a confidence level; parameter uncertainty propagates through the pipeline (population simulation / virtual patient ensembles).
+3. **Transparency and uncertainty.** Every predicted quantity carries a confidence level; parameter uncertainty propagates through the pipeline (population simulation / virtual patient ensembles). Predictive-regime reliability couples this: the weaker a run's evidence axes, the wider the parameter-ensemble band it reports (DISCLAIMER §2, `doc/12 §7.3`).
 4. **Open-source driven.** Prefer validated open-source stacks (Open Systems Pharmacology suite, RDKit, SciPy ecosystem) over closed commercial tools. The project is licensed under AGPLv3.
 5. **Fully configurable inputs.** All inputs (structure, route, dose, human parameters) are arbitrarily configurable; defaults exist only as conveniences and never constrain a user-defined configuration.
 
@@ -88,14 +88,23 @@ All four dimensions combine arbitrarily (any structure x any route x any dose x 
 
 **In scope (baseline 2026.9.1):**
 - Small-molecule drugs with known or inferable targets
-- Intravenous, oral, subcutaneous, intramuscular and transdermal administration routes (transdermal as first-order depot by default, finite-dose multi-layer skin-permeation membrane opt-in, doc/05 §1.4)
+- Intravenous, oral, subcutaneous, intramuscular and transdermal administration routes (transdermal as first-order depot in the baseline lane, finite-dose multi-layer skin-permeation membrane auto-engaged on the transdermal route in full fidelity, doc/05 §1.4)
 - Liver-centric toxicity (DILI) with secondary coverage of cardiovascular (QT) and kidney endpoints
 - Adult healthy and common-disease virtual populations
+- Measured true-parameter overrides (`--measured`) and observed-clinical-data comparison (`--empirical`): both enter the exact same full-fidelity pipeline, and every run discloses its predictive regime / reliability band (DISCLAIMER §2, `doc/12 §7.3`)
 
-**Explicitly out of scope (baseline 2026.9.1, deferred):**
+**Explicitly out of scope for the 2026.9.1 baseline (planned for later releases):**
 - Biologics/antibodies (require FcRn, immunogenicity sub-models)
 - Multi-drug interaction networks beyond a single co-administered pair
 - 3D spatial (finite-element) organ models; the system uses lumped-compartment organ models (the arbitrary input configurability in section 3.1 applies to model *inputs*; the modeled physiology depth may be expanded in later releases)
+
+> Every shipped baseline default and every planned release target is announced
+> openly: the `fidelity="baseline"` lane is an explicit opt-out whose real-range
+> defaults are disclosed in its contract, and `doc/07` carries the planned
+> release tracks (P5–P9) with their admission gates; nothing is dropped
+> silently (G5). Full `fidelity` runs engage every realism term with a
+> disclosed auto-anchor and
+> fail closed (`RealismError`) when a term cannot engage.
 
 ## 6. Related Work Recognized in This Design
 

@@ -23,6 +23,8 @@ from typing import Any
 from drugos.inputs.models import HumanProfile, Sex
 from drugos.inputs.parse_dosing import build_dose_plan
 from drugos.pipeline import (
+    EmpiricalObservations,
+    Measurements,
     RunSpec,
     benchmark_data,
     benchmark_names,
@@ -30,6 +32,7 @@ from drugos.pipeline import (
     spec_from_admet,
     spec_from_benchmark_data,
 )
+from drugos.reliability import reliability_of
 from drugos.report import render_html, render_json, render_markdown, write_report
 from drugos.version import __version__
 
@@ -73,6 +76,21 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("--out", help="directory to write report.json/md/html (creates it)")
     run_p.add_argument(
         "--no-pathway", action="store_true", help="skip the Stage-3 pathway simulation"
+    )
+    run_p.add_argument(
+        "--measured",
+        metavar="JSON",
+        help="measured true-parameter overrides: {fup, cl_hep_l_h, cl_renal_l_h, "
+        "cl_sec_l_h, cl_bil_l_h, fa, hepatic_vmax_mg_h, hepatic_km_mg_l, "
+        "qt_ic50_nm, dili_ic50_nm, dili_immune_ic50_nm, cns_ic50_nm, "
+        "beta_block_ic50_nm} (units match RunSpec)",
+    )
+    run_p.add_argument(
+        "--empirical",
+        metavar="JSON",
+        help="observed human PK/PD values to compare the prediction against: "
+        "{plasma_cmax_mg_l, auc_last_mg_h_l, peak_delta_qtc_ms, peak_alt_uln}; "
+        "reported as an explicit agreement diagnostic, never absorbed",
     )
 
     sub.add_parser("benchmarks", help="list benchmark compounds")
@@ -149,6 +167,8 @@ def spec_from_cli(
     weight: float = 70.0,
     no_pathway: bool = False,
     sc_im_ka: float | None = None,
+    measured: dict[str, Any] | None = None,
+    empirical: dict[str, Any] | None = None,
 ) -> RunSpec:
     """Build a ``RunSpec`` from playground/CLI string inputs."""
     if smiles:
@@ -169,7 +189,9 @@ def spec_from_cli(
         bench = _benchmark_lookup(benchmark or "acetaminophen")
         if bench is None:
             raise ValueError(f"unknown benchmark '{benchmark}'")
-        spec = spec_from_benchmark_data(bench, dose_override_mg=dose)
+        spec = spec_from_benchmark_data(
+            bench, dose_override_mg=dose, measurements=_from_meas(measured)
+        )
         spec.profile = HumanProfile(sex=Sex(sex), age_y=age, height_cm=height, weight_kg=weight)
         if route is not None:
             spec.dose_plan = build_dose_plan(route, spec.dose_plan.total_dose_mg)
@@ -177,7 +199,21 @@ def spec_from_cli(
         spec.include_pathway = False
     if sc_im_ka is not None:
         spec.sc_im_ka_per_h = sc_im_ka
+    measured_obj = _from_meas(measured)
+    if measured_obj is not None:
+        spec.measurements = measured_obj
+    empirical_obj = _from_emp(empirical)
+    if empirical_obj is not None:
+        spec.empirical = empirical_obj
     return spec
+
+
+def _from_meas(data: dict[str, Any] | None) -> Measurements | None:
+    return None if data is None else Measurements.from_dict(data)
+
+
+def _from_emp(data: dict[str, Any] | None) -> EmpiricalObservations | None:
+    return None if data is None else EmpiricalObservations.from_dict(data)
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,6 +244,8 @@ def cmd_run(args: argparse.Namespace) -> int:
             weight=args.weight,
             no_pathway=args.no_pathway,
             sc_im_ka=args.sc_im_ka,
+            measured=_load_json(args.measured),
+            empirical=_load_json(args.empirical),
         )
         result = run_pipeline(spec)
     except (ValueError, RuntimeError) as exc:
@@ -226,6 +264,18 @@ def cmd_run(args: argparse.Namespace) -> int:
         }[args.format]()
         print(text)
     return 0
+
+
+def _load_json(text: str | None) -> dict[str, Any] | None:
+    if text is None:
+        return None
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"invalid JSON options: {exc}") from exc
+    if not isinstance(value, dict):
+        raise ValueError("option must be a JSON object")
+    return value
 
 
 def write_report_directory(directory: str, result: Any) -> dict[str, str]:
@@ -287,6 +337,7 @@ def _study_contract(spec: RunSpec, args: argparse.Namespace) -> dict[str, object
     return {
         "compound": spec.name,
         "dose_mg": spec.dose_plan.total_dose_mg,
+        "reliability": reliability_of(spec, scaffold=benchmark_data(spec.molecule.name or "")),
         "uncertainty": ensemble.to_dict(),
         "population": population.to_dict(),
         "sensitivity": sens,
@@ -307,9 +358,15 @@ def _study_markdown(spec: RunSpec, args: argparse.Namespace) -> str:
         "",
         f"- Dose {spec.dose_plan.total_dose_mg:g} mg",
         "",
+        "## Prediction reliability",
+        "",
+        f"- Regime: **{_reliability_label(spec)}** (reliability: {_reliability(spec)}).",
+        f"- {_reliability_basis(spec)}",
+        "",
         "## D21 Uncertainty (parameter ensemble)",
         "",
-        f"- {unc['n_runs']} ensemble runs, CV={unc['cv']:g}, seed={unc['seed']}.",
+        f"- {unc['n_runs']} ensemble runs, CV={unc['cv']:g} (regime band width), "
+        f"seed={unc['seed']}.",
         "- Verdict distribution: " + ", ".join(f"{k} x{v}" for k, v in counts.items()),
         "",
         "## D22 Virtual population",
@@ -327,6 +384,21 @@ def _study_markdown(spec: RunSpec, args: argparse.Namespace) -> str:
         "> Research-grade model output; not for clinical decision-making (doc/08).",
     ]
     return "\n".join(lines)
+
+
+def _reliability(spec: RunSpec) -> str:
+    info = reliability_of(spec, scaffold=benchmark_data(spec.molecule.name or ""))
+    return str(info["reliability"])
+
+
+def _reliability_label(spec: RunSpec) -> str:
+    info = reliability_of(spec, scaffold=benchmark_data(spec.molecule.name or ""))
+    return str(info["label"])
+
+
+def _reliability_basis(spec: RunSpec) -> str:
+    info = reliability_of(spec, scaffold=benchmark_data(spec.molecule.name or ""))
+    return str(info["basis"])
 
 
 def cmd_study(args: argparse.Namespace) -> int:

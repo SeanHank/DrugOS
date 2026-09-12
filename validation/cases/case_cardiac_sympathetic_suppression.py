@@ -1,10 +1,11 @@
 """Sympathetic-suppression (beta-like) cardiac branch (L2, doc/05 4.3).
 
-The deferred item in doc/05 4.3 was explicit: the shipped ERK/MAPK readout
-encodes only the *stimulatory* pathway tone, so a drug that suppresses
-sympathetic drive (bradycardia + negative inotropy, e.g. beta-adrenergic
-site blockade) was not representable.  That branch is now
-``CardiacParams.sympathetic_tone`` (off by default at 1.0): a residual
+An earlier roadmap item in doc/05 4.3 asked for exactly this: the shipped
+ERK/MAPK readout encodes only the *stimulatory* pathway tone, so a drug that
+suppresses sympathetic drive (bradycardia + negative inotropy, e.g.
+beta-adrenergic site blockade) was not representable.  That branch is now
+``CardiacParams.sympathetic_tone`` (model-layer default-off at 1.0;
+auto-anchored by the pipeline in full fidelity): a residual
 tone in (0, 1] computed from a saturable Emax axis
 ``tone = IC50/(IC50 + C_free)`` (``sympathetic_tone_from_emax``) and
 applied multiplicatively to heart rate *and* stroke volume in
@@ -16,7 +17,8 @@ The checks pin, on the analytic Windkessel with a fixed systemic resistance:
 - at IC50 free exposure (C = IC50) tone = 1/2, HR halves, SV halves, and
   CO drops to exactly Q/4 with MAP = CVP + (Q/4)/(Q) * (MAP - CVP);
 - zero exposure (tone 1.0) preserves the baseline load (Q, MAP 93) and the
-  branch is off by default;
+  branch is model-layer default-off (null-effect anchor auto-assigned
+  in full fidelity);
 - a saturating exposure drives tone -> 0 and CO/MAP toward the CVP floor;
 - the QST output is monotone in the exposure/(IC50) ratio;
 - degenerate inputs (IC50 <= 0, tone out of (0, 1]) raise instead of

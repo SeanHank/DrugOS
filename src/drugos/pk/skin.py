@@ -1,9 +1,10 @@
 """Finite-dose multi-layer skin permeation for transdermal delivery (doc/05 1.4).
 
 The transdermal route defaults to the generic first-order ``depot``
-compartment; ``SkinLayers`` (opt-in, off by default) replaces it with a
-four-layer membrane: vehicle/surface reservoir -> stratum corneum (SC) ->
-viable epidermis (VE) -> dermis, with first-order removal from the dermis into
+compartment; ``SkinLayers`` (model layer default-off; auto-engaged on the
+transdermal route in full fidelity) replaces it with a four-layer
+membrane: vehicle/surface reservoir -> stratum corneum (SC) -> viable
+epidermis (VE) -> dermis, with first-order removal from the dermis into
 the dermal capillary bed (systemic venous blood).
 
 Each inter-layer link is a reversible, diffusion-limited flux in the classic

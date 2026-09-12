@@ -1,5 +1,5 @@
 {
-  "version": "2026.9.2",
+  "version": "2026.9.1",
   "about": "Data manifest for the DrugOS repository. Every vendored file under data/ is pinned by sha256; scripts/release.py gates verifies each checksum and fails the release on any mismatch (tampering, silent edits, or accidental drift). Sources that are distributed as packages (ADMET-AI, RDKit, terbapy-style model weights) or are license-restricted bulk downloads are documented in data/README.md and fetched via package managers; they are never vendored here.",
   "files": [
     {

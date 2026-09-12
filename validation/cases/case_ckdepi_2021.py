@@ -6,8 +6,8 @@ the age/sex default but the **CKD-EPI 2021 race-free creatinine equation**
 (Levey et al., N Engl J Med 2021;385:1737-49), scaled to the per-subject
 absolute GFR by Mosteller BSA.  This is the standard, published, openly
 reproducible clinical equation for eGFR — the production-validated baseline
-for the Stage-4 nephron panel (CMR nephron SBML remains the deeper P7
-catalogued target).
+for the Stage-4 nephron panel (CMR nephron SBML is a planned release; see
+doc/07 P7, in-house CKD-EPI + tubular transport carries the Stage-4 baseline).
 
 The case pins: (1) reference eGFR points under the 2021 equation, (2) the
 BSA scaling, (3) pipeline wiring — a profile carrying Scr drives

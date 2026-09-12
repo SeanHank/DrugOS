@@ -1,8 +1,8 @@
 # DrugOS Validation Report
 
-- Status: **PASS** (36/36 cases passed)
-- Generated: 2026-09-11 04:14 UTC
-- DrugOS version: 2026.9.0
+- Status: **PASS** (38/38 cases passed)
+- Generated: 2026-09-12 05:19 UTC
+- DrugOS version: 2026.9.1
 - Interpreter: /opt/anaconda3/envs/drug_os/bin/python
 - Parallelism: parallel (8 worker processes)
 - Fold-error allowance: within 2x of the published band centre (doc/08 Tier 2, GMFE <= 2); Fa bands additionally clamp to 1.
@@ -54,27 +54,27 @@
 |  |  | model_prior_to_measured_ratio | 0.07575 [0.05, 20] fold | pass |
 |  |  | herg_corpus_median_pct_inh_at_1uM | 8.254 [0, 30] % inhibition | pass |
 |  |  | herg_corpus_p99_9_pct_inh_at_1uM | 31.64 [25, 100] % inhibition | pass |
-| Stage-5 composite risk ordering vs clinical anchors | L3 | dofetilide_qt_risk | 0.5288 [0.45, 0.95] P(risk) | pass |
-|  |  | warfarin_qt_risk | 0.0053 [0, 0.35] P(risk) | pass |
-|  |  | acetaminophen_20g_dili_risk | 0.9703 [0.6, 1] P(risk) | pass |
-|  |  | acetaminophen_1g_dili_risk | 0.1185 [0, 0.4] P(risk) | pass |
+| Stage-5 composite risk ordering vs clinical anchors | L3 | dofetilide_qt_risk | 0.4941 [0.45, 0.95] P(risk) | pass |
+|  |  | warfarin_qt_risk | 0.004803 [0, 0.35] P(risk) | pass |
+|  |  | acetaminophen_20g_dili_risk | 0.9766 [0.6, 1] P(risk) | pass |
+|  |  | acetaminophen_1g_dili_risk | 0.1364 [0, 0.4] P(risk) | pass |
 |  |  | unanchored_cns_prior | 0.2 [0.2, 0.2] P(risk) | pass |
 |  |  | held_out_dose_profile_stable | 0 [0, 0] disagreements | pass |
 | Phase-6 robustness engines: D21-D24 self-consistency | L1 | ensemble_reproducible_max_band_diff | 0 [0, 0] au | pass |
 |  |  | band_monotonic_violations | 0 [0, 0] points | pass |
-|  |  | population_min_risk_nonneg | 0.114 [0, 0] P(risk) | pass |
+|  |  | population_min_risk_nonneg | 0.1283 [0, 0] P(risk) | pass |
 |  |  | sobol_first_total_in_range | 0 [0, 0] flags | pass |
-|  |  | dili_ic50_sensitivity_sign | -0.462 [-1, 0] dlnR/dlnIC50 | pass |
+|  |  | dili_ic50_sensitivity_sign | -0.4525 [-1, 0] dlnR/dlnIC50 | pass |
 | SC/IM depot analytic (Bateman single pool) | L2 | cmax_mg_l | 0.123 [0.1171, 0.1294] mg/L | pass |
 |  |  | tmax_h | 12 [11.34, 13.86] h | pass |
 |  |  | auc_inf_mgh_l | 18.1 [17.1, 18.9] mg.h/L | pass |
 |  |  | unabsorbed_feces_mg | 1 [0.9, 1.1] mg | pass |
 | D24 prospective rerun fidelity (dofetilide QTc) | L1 | test_retest_max_risk_diff | 0 [0, 0] P(risk) | pass |
-|  |  | held_out_subject_qt_risk | 0.8361 [0.7, 0.99] P(risk) | pass |
+|  |  | held_out_subject_qt_risk | 0.5276 [0.7, 0.99] P(risk) | pass |
 |  |  | held_out_verdict_disagreements | 0 [0, 0] count | pass |
-| R literature-PK cross-check (R-1) | L3 | r_literature_cl_agreement_max | 7.484e-16 [0, 0.02] fraction | pass |
+| R literature-PK cross-check (R-1) | L3 | r_literature_cl_agreement_max | 1.596e-15 [0, 0.02] fraction | pass |
 |  |  | r_verdicts_not_agree | 0 [0, 0] count | pass |
-|  |  | r_two_comp_fits | 1 [0, 5] count | pass |
+|  |  | r_two_comp_fits | 0 [0, 5] count | pass |
 | cardiac AP cross-check (ORd/IKr) | L3 | ord_apd90_base_ms | 266.3 [200, 350] ms | pass |
 |  |  | dofetilide_at_ic50_delta_apd90_ms | 114.8 [30, 1000] ms | pass |
 |  |  | apd90_monotone_25_to_50_ms | 67.7 [0, 1000] ms | pass |
@@ -151,12 +151,21 @@
 |  |  | immune_weight_increases_dead | 0.68 [0.4101, 1] dead_frac @72h with immune_weight=1 | pass |
 |  |  | monotone_exposure_response | 0.666 [0, 0.6666] immune @72h (low exposure) | pass |
 |  |  | degenerate_immune_inputs_rejected | 3 [3, 3] count of rejected probes | pass |
-| ACAT-lite multi-segment SI dissolution/absorption (off by default) | L2 | single_si_baseline | 14 [0, 100] si index present | pass |
+| ACAT-lite multi-segment SI dissolution/absorption (model default-off; full fidelity auto-engages) | L2 | single_si_baseline | 14 [0, 100] si index present | pass |
 |  |  | mass_conservation_3seg | 100 [98, 102] mg | pass |
 |  |  | solubility_caps_per_segment | 39.8 [5, 100] mg feces | pass |
 |  |  | segments_change_dissolution_dynamics | 2.824 [1, 100] mg feces difference (5-seg vs 1-seg) | pass |
 |  |  | off_by_default_state_count | 20 [20, 20] state dim | pass |
 |  |  | degenerate_segments_rejected | 1 [1, 1] flag | pass |
+| E2E full-chain ADMET -> report integrity (trust mechanism) | L1 | contract_determinism | 1 [1, 1] bool | pass |
+|  |  | required_sections_present | 2 [2, 2] contracts | pass |
+|  |  | plasma_cmax_positive | 2 [2, 2] compounds | pass |
+|  |  | oral_bioavailability_unit_interval | 0.1842 [0, 1] fraction | pass |
+|  |  | validated_anchors_disclosed | 2 [2, 2] contracts | pass |
+|  |  | g5_no_silent_fallback_disclosed | 2 [2, 2] contracts | pass |
+|  |  | class_priors_disclosed | 2 [2, 2] contracts | pass |
+|  |  | mechanism_terms_engaged_full | 2 [2, 2] contracts | pass |
+|  |  | report_artifacts_written | 1 [1, 1] bool | pass |
 | Native TMDD drug disposition (mass-balance coupling) | L2 | mass_conserves_with_binding | 50 [50, 50] mg | pass |
 |  |  | tmdd_internalization_is_drug_sink | 1.122 [0.5, 3] mg cleared in 24h | pass |
 |  |  | dose_disproportional_retention | 0.7768 [0, 0.9] fraction retained at 5 mg | pass |
@@ -177,6 +186,12 @@
 |  |  | saturating_exposure_cvp_floor | 6.725 [5, 6] arterial pressure mmHg @ saturating blockade | pass |
 |  |  | monotone_exposure_response | 0.0465 [0, 0.0465] CO @ C/IC50 = 10 | pass |
 |  |  | degenerate_sympathetic_inputs_rejected | 2 [2, 2] count of rejected probes | pass |
+| D25/D26 predictive-regime reliability disclosure (DISCLAIMER §2) | L1 | reliability_disclosure_determinism | 0 [0, 0] count | pass |
+|  |  | novel_vs_validated_band_cv | 3 [3, 3] ratio | pass |
+|  |  | regime_classification_measured_override | 1 [1, 1] count | pass |
+|  |  | empirical_agreement_rows_reported | 2 [2, 2] count | pass |
+|  |  | lowest_empirical_fold_error | 0.5607 [0.01, 2] ratio | pass |
+|  |  | regime_cv_reaches_uncertainty_stage | 1 [1, 1] count | pass |
 
 ## Evidence levels
 
@@ -192,7 +207,7 @@ Per-level status:
 
 - **L3** (Empirically anchored (Tier 1)): 10/10 cases green.
 - **L2** (Analytic / mechanistic limit (Tier 2)): 21/21 cases green.
-- **L1** (Internal consistency / CI (Tier 3)): 5/5 cases green.
+- **L1** (Internal consistency / CI (Tier 3)): 7/7 cases green.
 
 ## Notes & limitations
 
@@ -211,11 +226,11 @@ Per-level status:
 - **kidney GFR/AKI escalation (KDIGO)**: closed-form Scr=P/GFR exact at zero exposure; 1.0 mg/L free kidney exposure -> Scr ratio 4.54 (KDIGO stage 3) vs 1.001 (stage 0); GFR floor 26 mL/min.  KDIGO criteria: Scr x2 -> stage 2, x3 -> stage 3 (or GFR drop).
 - **Stage-5 clinical grading: analytic point-matches**: Exposure ROC line reproduces the closed form sigmoid(1.2*(0.0 - (-1.3))) = 0.8264; empty-evidence fusion returns the DILI prior 0.25 exactly; grade ladder and crossing windows match the CTCAE conventions of doc/05 5.1-5.2.
 - **Corpus calibration cross-check (R-2)**: dofetilide ChEMBL hERG IC50 geomean 26.4 nM (core rows, outlier >=10 uM excluded; regen by scripts/data/fetch_chembl_herg.py); model class prior 2.0 nM = 0.1x of measured (conservative direction, within the 20x envelope). hERG Central corpus: 306893 PMID-anchored rows; median %inhibition at 1 uM = 8.3, P99.9 = 31.6 (blockade is the exception, so a per-compound hERG override is the honest modelling choice).
-- **Stage-5 composite risk ordering vs clinical anchors**: dofetilide QT 0.529 (qt-driven) > warfarin QT 0.005; APAP 20 g DILI 0.970 > 1 g DILI 0.118 (dili-driven); unanchored CNS sits on the 0.20 class prior.  Published anchors: dofetilide (Tikosyn) is a QT-prolonging hERG blocker and is contraindicated with renal/QT risk; massive acetaminophen overdose causes centrilobular hepatic necrosis (DILI), while warfarin is not a QT liability.
-- **Phase-6 robustness engines: D21-D24 self-consistency**: Fixed-seed D21 ensemble reproduces itself exactly (max median-band diff 0); 90% band monotone with 0 violations; D22 cohort incidence non-negative; D23 first/total indices inside [-1,1]/[0,1]; DILI risk strictly decreases with a rising IC50 (-0.4620 per +10% IC50).
+- **Stage-5 composite risk ordering vs clinical anchors**: dofetilide QT 0.494 (qt-driven) > warfarin QT 0.005; APAP 20 g DILI 0.977 > 1 g DILI 0.136 (dili-driven); unanchored CNS sits on the 0.20 class prior.  Published anchors: dofetilide (Tikosyn) is a QT-prolonging hERG blocker and is contraindicated with renal/QT risk; massive acetaminophen overdose causes centrilobular hepatic necrosis (DILI), while warfarin is not a QT liability.
+- **Phase-6 robustness engines: D21-D24 self-consistency**: Fixed-seed D21 ensemble reproduces itself exactly (max median-band diff 0); 90% band monotone with 0 violations; D22 cohort incidence non-negative; D23 first/total indices inside [-1,1]/[0,1]; DILI risk strictly decreases with a rising IC50 (-0.4525 per +10% IC50).
 - **SC/IM depot analytic (Bateman single pool)**: V=66.4 L, ka=0.3/h, F=0.9; analytic Cmax=0.123 mg/L, Tmax=12.6 h, AUC=18.0 mg.h/L
-- **D24 prospective rerun fidelity (dofetilide QTc)**: Repeated identical runs agree to 0.0e+00 in risk and keep verdict 'High composite risk (53%, driver qt)'; an independent female-70 profile also sustains the high-QT regime (dofetilide QT 0.836, driver qt).  Basis: reproducibility is the precondition of the runbook; the QTc band itself is anchored by the L3 dofetilide Tier-1 case (see case_cardiac_qtc).
-- **R literature-PK cross-check (R-1)**: worst |CL_r - CL_py|/CL_py over midazolam / acetaminophen / warfarin / ciprofloxacin / dofetilide: 7.48e-16 (ciprofloxacin); midazolam=r:agree / acetaminophen=r:agree / warfarin=r:agree / ciprofloxacin=r:agree / dofetilide=r:agree; method-of-residuals two-comp fits: 1/5
+- **D24 prospective rerun fidelity (dofetilide QTc)**: Repeated identical runs agree to 0.0e+00 in risk and keep verdict 'Elevated composite risk: monitor on the flagged endpoint(s)'; an independent female-70 profile also sustains the high-QT regime (dofetilide QT 0.528, driver qt).  Re-baselined under full fidelity: the auto-engaged native TMDD sink at the hERG site (doc/12 §7.2) lowers free cardiac exposure against the linear lane, moving dofetilide QT from ~0.85 to ~0.5 while it stays the flagged driver.  Basis: reproducibility is the precondition of the runbook; the QTc band itself is anchored by the L3 dofetilide Tier-1 case (see case_cardiac_qtc).
+- **R literature-PK cross-check (R-1)**: worst |CL_r - CL_py|/CL_py over midazolam / acetaminophen / warfarin / ciprofloxacin / dofetilide: 1.60e-15 (ciprofloxacin); midazolam=r:agree / acetaminophen=r:agree / warfarin=r:agree / ciprofloxacin=r:agree / dofetilide=r:agree; method-of-residuals two-comp fits: 0/5
 - **cardiac AP cross-check (ORd/IKr)**: ORd 2011 (myokit, endo, 50 pre-paces @1 Hz): baseline APD90=266.3 ms; delta-APD90 @25% block=47.1 ms, @50% block (measured-IC50 concentration)=114.8 ms, control (0% block)=0.0000 ms; monotone +67.7 ms between block levels; warfarin control confirmed zero prolongation (matches encoder ordering warfarin 0.017 ms << dofetilide 20.2 ms)
 - **ADMET-AI BBB_Martins -> CNS partition (R-4)**: BBB_Martins P=0.9 -> kpu_brain 1.00, P=0.1 -> 0.20 (source: ADMET-AI BBB_Martins head); restricted brain peak = 20% of penetrant; CNS grades 0 <= 0; baseline (no ADMET-AI) kpu=1.00 untouched — benchmark anchors unchanged
 - **Huang/Levchenko SBML MAPK cascade integration (R-5)**: parsed 22 species / 20 reactions from BIOMD0000000009 (volume 4.0e-12 L); drug-free PP_K steady state 0.982; occupancy monotone 0.6->0.917, 0.9->0.005, 1.0->0.000; full-signal fold-change 0.000 (inhibition).
@@ -228,10 +243,12 @@ Per-level status:
 - **Cheng-Prusoff IC50->Ki conversion**: measured IC50 -> Ki via Ki = IC50/(1 + [S]/Km); doc/10 P2 'never liter-wire IC50->Kd' is now code default assay convention [S]/Km = 1 sets Ki = IC50/2 (90.0 uM -> 45000 nM)
 - **Per-CYP hepatic kinetics (MM/Hill, abundance-scaled Vmax)**: source Vmax(CYP3A4)=7.800 mg/h from 7800 nmol content; low-dose CL=17.23 vs twin 17.89 L/h; doubling ratio=2.00; Hill/MM flux at 0.5Km=0.60, at 2Km=1.20
 - **Immune-mediated DILI QST (adaptive immune response via hapten hazard)**: I_ss=0.3333 (target 0.3333); active dead@72h=0.6800 vs base=0.4101; low-exposure immune=0.6660 < active=0.6666
-- **ACAT-lite multi-segment SI dissolution/absorption (off by default)**: feces single=13.89, 3seg=8.53, sol1=36.97, sol5=39.80, mass_err=0.0000, feces_diff=2.82
+- **ACAT-lite multi-segment SI dissolution/absorption (model default-off; full fidelity auto-engages)**: feces single=13.89, 3seg=8.53, sol1=36.97, sol5=39.80, mass_err=0.0000, feces_diff=2.82
+- **E2E full-chain ADMET -> report integrity (trust mechanism)**: acetaminophen: Cmax 0.00967 mg/L, Fa 0.184, verdict No elevated composite risk detected; caffeine: Cmax 0.0256 mg/L, Fa 0.407, verdict High composite risk (63%, driver dili); anchors ['CKD-EPI 2021 race-free GFR baseline (R-6)', 'de Bruijn & Rietjens 2024 GCDCA bile-acid cholestasis PBK (R-7)', 'ADMET-AI BBB_Martins brain-partition head (R-4)', 'corpus-calibrated hERG P->KD sieve (R-8)']; BBB_Martins head wired; mechanism terms engaged ['tubular secretion', 'biliary excretion + enterohepatic recirculation', 'first-pass gut-wall extraction', 'saturable (Michaelis-Menten) hepatic clearance', 'TMDD target binding (native mass balance)', 'immune-mediated DILI axis', 'sympathetic-suppression cardiac branch', 'organ-feedback loop (coupled clearance)', 'multi-segment (ACAT) small-intestine absorption']; deterministic re-run matches.
 - **Native TMDD drug disposition (mass-balance coupling)**: mass-closed=50.00/50 mg, bound=1.259 mg; cleared(24h)=1.12 mg sink; retention 5 mg=0.78 vs 2000 mg=1.00 (dose-disproportional); <log10(DR/R vs D/Kd)>=-0.0088 (Kd=1.5 nM); AUC(bound)/AUC(twin)=0.08
 - **Multi-layer transdermal skin permeation (finite-dose membrane)**: mass=20.000/20 mg; J_obs/J_Fick=0.994; max partition deviation=0.003 log2; absorbed@6h thin=9.92 vs thick=4.01 mg; absorbed@1h slow=4.16 vs fast=8.29 mg
 - **Sympathetic suppression branch (beta-like Emax on HR and SV)**: C=IC50 -> CO/CO_base=0.2500 (target 0.25); saturating MAP=6.73 mmHg (floor 5.0); monotone over C/IC50 in [0.0, 0.1, 0.5, 1.0, 2.0, 10.0]
+- **D25/D26 predictive-regime reliability disclosure (DISCLAIMER §2)**: The trust record's reliability block is deterministic across repeated runs; the six regimes order a strictly-narrowing band CV (novel 0.60 > validated 0.20), so a weaker evidence axis can never report a tighter parameter band. A full measured-PK override upgrades the run to 'measured_in_range_on_label' and the run actually used the measured hepatic clearance (not a synthesized stand-in), which is the DISCLAIMER §2 target: given all true parameters, predict the real effect. Empirical disagreement is disclosed as fold-error / within-2x rows in the trust record and a written policy that disagreement is the expected state of the mechanistic model — never silently absorbed as a bug. The regime CV feeds the D21 parameter-ensemble uncertainty stage, so reliability and the reported uncertainty band stay coupled. Weight L1: this certifies honesty and self-consistency of the DISCLAIMER §2 bookkeeping; clinical accuracy remains the job of the L3 Tier-1 benchmark cases.
 
 ## Tier-1 geometric-mean fold error (L3 asserted metrics)
 

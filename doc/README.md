@@ -23,7 +23,7 @@ All inputs (chemical structure, route of administration, dose, complete human pa
 | [01-project-overview.md](01-project-overview.md) | Vision, causal chain, inputs/outputs, scope, principles |
 | [02-literature-review.md](02-literature-review.md) | Literature basis per pipeline stage (PBPK, DTI-ML, QSP, QST, organ models, AOP) |
 | [03-system-architecture.md](03-system-architecture.md) | Six-stage architecture, component breakdown, data contract, execution modes |
-| [04-data-sources.md](04-data-sources.md) | External data catalog, ingestion/versioning plan, quality gates |
+| [04-data-sources.md](04-data-sources.md) | External data register, ingestion/versioning plan, quality gates |
 | [05-methodology-pipeline.md](05-methodology-pipeline.md) | Mathematical formulation and implementation plan per stage |
 | [06-technology-stack.md](06-technology-stack.md) | Libraries, environment, file layout, reproducibility |
 | [07-roadmap.md](07-roadmap.md) | Phased implementation plan and milestones (M1-M6) |

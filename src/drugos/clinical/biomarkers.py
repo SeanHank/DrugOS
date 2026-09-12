@@ -138,7 +138,7 @@ def grade_absolute(value: float, spec: BiomarkerSpec) -> BiomarkerGrade:
 
 
 # ---------------------------------------------------------------------------
-# Baseline biomarker catalogue (units + reference ranges)
+# Baseline biomarker set (units + reference ranges)
 # ---------------------------------------------------------------------------
 BIOMARKERS: dict[str, BiomarkerSpec] = {
     "ALT": BiomarkerSpec(

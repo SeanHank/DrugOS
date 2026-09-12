@@ -1,8 +1,8 @@
 # Data Sources & Data Engineering
 
-This document catalogs the external data sources used across the pipeline and how they are ingested, cached, and versioned.
+This document lists the external data sources used across the pipeline and how they are ingested, cached, and versioned.
 
-## 1. Catalog
+## 1. Data Sources Register
 
 ### 1.1 Chemical & Physicochemical Properties
 

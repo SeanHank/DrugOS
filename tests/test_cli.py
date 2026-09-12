@@ -228,6 +228,8 @@ def test_cmd_run_json(
             weight=70.0,
             no_pathway=False,
             sc_im_ka=None,
+            measured=None,
+            empirical=None,
             format="json",
             out=None,
         )
@@ -253,11 +255,44 @@ def test_cmd_run_error(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.M
         weight=70.0,
         no_pathway=False,
         sc_im_ka=None,
+        measured=None,
+        empirical=None,
         format="json",
         out=None,
     )
     assert cli.cmd_run(ns) == 2
     assert "error: bad compound" in capsys.readouterr().err
+
+
+def test_cmd_run_rejects_bad_json_options(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, fast_warfarin: RunSpec
+) -> None:
+    monkeypatch.setattr(cli, "spec_from_cli", lambda **kw: fast_warfarin)
+
+    def ns(measured: str | None) -> SimpleNamespace:
+        return SimpleNamespace(
+            benchmark="warfarin",
+            smiles=None,
+            dose=None,
+            route=None,
+            sex="male",
+            age=40.0,
+            height=170.0,
+            weight=70.0,
+            no_pathway=False,
+            sc_im_ka=None,
+            measured=measured,
+            empirical=None,
+            format="json",
+            out=None,
+        )
+
+    assert cli.cmd_run(ns("not-json")) == 2
+    assert "invalid JSON options" in capsys.readouterr().err
+    assert cli.cmd_run(ns("[1, 2]")) == 2
+    assert "must be a JSON object" in capsys.readouterr().err
+    assert cli.cmd_run(ns('{"fup": 0.5}')) == 0
+    assert json.loads(capsys.readouterr().out)["manifest"]["name"] == "warfarin"
 
 
 def test_cmd_run_markdown(
@@ -279,6 +314,8 @@ def test_cmd_run_markdown(
         weight=70.0,
         no_pathway=False,
         sc_im_ka=None,
+        measured=None,
+        empirical=None,
         format="markdown",
         out=out_dir,
     )
@@ -292,6 +329,42 @@ def test_spec_from_cli_sc_im_ka() -> None:
     assert plain.sc_im_ka_per_h is None
     sc = cli.spec_from_cli(benchmark="warfarin", sc_im_ka=0.1)
     assert sc.sc_im_ka_per_h == 0.1
+
+
+def test_spec_from_cli_smiles_and_option_blocks(monkeypatch: pytest.MonkeyPatch) -> None:
+    import importlib
+
+    ps = importlib.import_module("drugos.inputs.parse_structure")
+    admet_mod = importlib.import_module("drugos.pk.admet")
+    monkeypatch.setattr(ps, "parse_structure", lambda s, name: _fake_mol())
+    monkeypatch.setattr(admet_mod, "predict_admet", lambda s: _fake_admet())
+    spec = cli.spec_from_cli(
+        smiles="CC",
+        dose=20.0,
+        route="iv_bolus",
+        sex="male",
+        age=40.0,
+        height=170.0,
+        weight=70.0,
+        no_pathway=True,
+        sc_im_ka=0.05,
+        measured={"fup": 0.4},
+        empirical={"plasma_cmax_mg_l": 8.0},
+    )
+    assert spec.measurements is not None and spec.measurements.fup == pytest.approx(0.4)
+    assert spec.empirical is not None and spec.empirical.plasma_cmax_mg_l == pytest.approx(8.0)
+    assert spec.include_pathway is False
+    assert spec.sc_im_ka_per_h == 0.05
+
+
+def test_spec_from_cli_benchmark_measured_empirical() -> None:
+    spec = cli.spec_from_cli(
+        benchmark="warfarin",
+        measured={"fup": 0.5},
+        empirical={"plasma_cmax_mg_l": 9.0},
+    )
+    assert spec.measurements is not None and spec.measurements.fup == pytest.approx(0.5)
+    assert spec.empirical is not None and spec.empirical.plasma_cmax_mg_l == pytest.approx(9.0)
 
 
 def test_cmd_benchmarks(capsys: pytest.CaptureFixture[str]) -> None:
@@ -355,7 +428,14 @@ def test_study_contract(
 ) -> None:
     _patch_study(monkeypatch, study_artifacts)
     study = cli._study_contract(fast_warfarin, _study_args())
-    assert set(study) == {"compound", "dose_mg", "uncertainty", "population", "sensitivity"}
+    assert set(study) == {
+        "compound",
+        "dose_mg",
+        "uncertainty",
+        "population",
+        "sensitivity",
+        "reliability",
+    }
     assert study["compound"] == "warfarin"
     assert study["uncertainty"]["n_runs"] == 1
     assert study["population"]["n_individuals"] == 1

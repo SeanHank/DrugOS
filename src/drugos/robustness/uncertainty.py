@@ -2,12 +2,14 @@
 
 A multiplicative parameter ensemble perturbs the empirically-fitted PK and
 in-vitro potency inputs of a ``RunSpec`` (unbound clearance split, plasma free
-fraction, hERG / DILI / CNS potencies) with independent log-normals at a fixed
-coefficient of variation.  Every ensemble member is a full pipeline run; the
-collected trajectories give 90% percentile bands for plasma/organ readouts and
-quantiles for the endpoint risks, surfacing how much the Stage-5 verdict moves
-under input uncertainty.  Deterministic via ``seed``, so results are
-reproducible.
+fraction, hERG / DILI / CNS potencies) with independent log-normals at a
+coefficient of variation.  The default CV is not fixed: it resolves to the
+run's predictive-regime band width (``reliability.cv_for_spec``), so
+novel-molecule runs are swept wider than measured, on-label runs.  Every
+ensemble member is a full pipeline run; the collected trajectories give 90%
+percentile bands for plasma/organ readouts and quantiles for the endpoint
+risks, surfacing how much the Stage-5 verdict moves under input uncertainty.
+Deterministic via ``seed``, so results are reproducible.
 """
 
 from __future__ import annotations
@@ -19,7 +21,8 @@ from dataclasses import dataclass
 import numpy as np
 
 from drugos.organ.base import NDArray
-from drugos.pipeline import RunResult, RunSpec, run_pipeline
+from drugos.pipeline import RunResult, RunSpec, benchmark_data, run_pipeline
+from drugos.reliability import cv_for_spec
 
 DEFAULT_KEYS: tuple[str, ...] = (
     "cl_hep_l_h",
@@ -45,24 +48,31 @@ CURVE_NAMES: tuple[str, ...] = (
 
 @dataclass(frozen=True, slots=True)
 class EnsembleConfig:
-    """Configuration of the multiplicative parameter ensemble."""
+    """Configuration of the multiplicative parameter ensemble.
+
+    ``cv=None`` (default) resolves at run time to the predictive regime's
+    recommended band width (``reliability.cv_for_spec``): novel-molecule runs
+    are swept far wider than measured, on-label runs, so the reported band
+    widens exactly where confidence is lowest (doc/07 D21/D25).
+    """
 
     n_runs: int = 14
     seed: int = 7
-    cv: float = 0.30
+    cv: float | None = None
     keys: tuple[str, ...] = DEFAULT_KEYS
 
     def __post_init__(self) -> None:
         if self.n_runs < 1:
             raise ValueError("n_runs must be >= 1")
-        if self.cv <= 0:
+        if self.cv is not None and self.cv <= 0:
             raise ValueError("cv must be positive")
 
 
 def sample_multipliers(config: EnsembleConfig) -> list[dict[str, float]]:
     """Deterministic log-normal multiplier sets, one per ensemble member."""
+    cv = config.cv if config.cv is not None else 0.30
     rng = np.random.default_rng(config.seed)
-    matrix: NDArray = rng.lognormal(0.0, config.cv, size=(config.n_runs, len(config.keys)))
+    matrix: NDArray = rng.lognormal(0.0, cv, size=(config.n_runs, len(config.keys)))
     return [
         {name: float(matrix[i, j]) for j, name in enumerate(config.keys)}
         for i in range(config.n_runs)
@@ -183,6 +193,9 @@ class EnsembleResult:
 def run_uncertainty(spec: RunSpec, config: EnsembleConfig | None = None) -> EnsembleResult:
     """Run the parameter ensemble over ``spec`` and summarize the bands."""
     config = config or EnsembleConfig()
+    if config.cv is None:
+        cv = cv_for_spec(spec, scaffold=benchmark_data(spec.molecule.name or ""))
+        config = EnsembleConfig(n_runs=config.n_runs, seed=config.seed, cv=cv, keys=config.keys)
     multipliers = sample_multipliers(config)
     results = [run_pipeline(apply_multipliers(spec, m)) for m in multipliers]
     base = results[0]

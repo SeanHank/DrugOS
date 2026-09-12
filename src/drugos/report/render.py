@@ -16,6 +16,7 @@ import numpy as np
 
 from drugos.organ.base import NDArray
 from drugos.pipeline import RunResult
+from drugos.version import __version__
 
 _GREEN = "#86e087"
 _AMBER = "#f5c268"
@@ -154,6 +155,7 @@ def render_markdown(result: RunResult) -> str:
     cardiac = result.organ.cardiac
     kidney = result.organ.kidney
     bio = result.organ.biomarkers
+    trust = result.to_contract()["trust"]
     lines = [
         f"# DrugOS pipeline report — {result.name}",
         "",
@@ -161,6 +163,15 @@ def render_markdown(result: RunResult) -> str:
         f"Cmax {_plain(result.metrics.cmax_mg_l)} mg/L · "
         f"AUC0-t {_plain(result.metrics.auc_last_mgh_l)} mg·h/L · "
         f"tmax {_plain(result.metrics.tmax_h)} h",
+        "",
+        "## Prediction reliability",
+        "",
+        f"- Regime: **{trust['reliability']['regime']}** — "
+        f"{trust['reliability']['label']} (reliability "
+        f"{trust['reliability']['reliability']}).",
+        f"- Basis: {trust['reliability']['basis']}",
+        f"- Recommended parameter-ensemble CV: {_plain(trust['reliability']['band_cv'])}",
+        f"- {trust['reliability']['disclaimer']}",
         "",
         "## Target engagement",
         "",
@@ -226,6 +237,24 @@ def render_markdown(result: RunResult) -> str:
         "",
         "> Research-grade model output; not for clinical decision-making (doc/08).",
     ]
+    agreement = trust.get("empirical_agreement")
+    if agreement is not None:
+        agreement_rows_md = "\n".join(
+            f"| {row['label']} | {_plain(row['observed'])} | {_plain(row['predicted'])} | "
+            f"{(str(row['fold_error']) if row['fold_error'] is not None else 'n/a')} | "
+            f"{'within 2x' if row['within_2x'] else 'outside 2x'} |"
+            for row in agreement["observations"]
+        )
+        lines += [
+            "",
+            "## Empirical agreement (observed vs predicted)",
+            "",
+            "| Endpoint | Observed | Predicted | Fold error | Within 2x |",
+            "|---|---|---|---|---|",
+            agreement_rows_md,
+            "",
+            f"_Policy: {agreement['policy']}_",
+        ]
     return "\n".join(lines)
 
 
@@ -304,6 +333,23 @@ def render_html(result: RunResult) -> str:
             f"<td>{r.driver.value}</td><td>{html.escape(driver_note)}</td></tr>"
         )
 
+    rel = contract["trust"]["reliability"]
+    agreement = contract["trust"].get("empirical_agreement")
+    emp_rows = ""
+    if agreement is not None:
+        emp_rows = (
+            "<table><tr><th>Endpoint</th><th>Observed</th><th>Predicted</th>"
+            "<th>Fold error</th><th>Within 2x</th></tr>"
+        )
+        for row in agreement["observations"]:
+            emp_rows += (
+                "<tr><td>" + html.escape(row["label"]) + "</td>"
+                f"<td>{_plain(row['observed'])}</td><td>{_plain(row['predicted'])}</td>"
+                f"<td>{(str(row['fold_error']) if row['fold_error'] is not None else 'n/a')}</td>"
+                f"<td>{'within 2x' if row['within_2x'] else 'outside 2x'}</td></tr>"
+            )
+        emp_rows += "</table>"
+
     css = (
         f":root{{--bg:{_PURPLE_BG};--panel:{_PURPLE_PANEL};--panel2:{_PURPLE_PANEL_2};"
         f"--acc:{_PURPLE_ACCENT};--acc2:{_PURPLE_ACCENT_2};--text:{_TEXT};--mut:{_MUTED};}}"
@@ -330,7 +376,7 @@ def render_html(result: RunResult) -> str:
         '<div class="mut">compound <b>'
         + html.escape(result.name)
         + "</b> · dose "
-        + f"{_plain(result.pk.dose_mg)} mg ({result.pk.route.value}) · model 2026.9.0</div>"
+        + f"{_plain(result.pk.dose_mg)} mg ({result.pk.route.value}) · model {__version__}</div>"
         '<section class="panel"><div class="h2">Pharmacokinetics</div>'
         "<table><tr><th>Cmax (mg/L)</th><th>AUC0-t (mg·h/L)</th><th>AUC0-inf (mg·h/L)</th>"
         "<th>tmax (h)</th></tr>"
@@ -381,6 +427,15 @@ def render_html(result: RunResult) -> str:
         f"<td>{_plain(contract['clinical']['exposure']['qt_ic50_nm'])}</td>"
         f"<td>{_plain(contract['clinical']['exposure']['dili_ic50_nm'])}</td></tr></table>"
         "</section>"
+        '<section class="panel"><div class="h2">Prediction reliability</div>'
+        f'<div class="mut">regime <b>{html.escape(rel["regime"])}</b> — '
+        f"{html.escape(rel['label'])} (reliability {html.escape(rel['reliability'])})</div>"
+        f'<div class="mut" style="margin-top:6px">{html.escape(rel["basis"])}</div>'
+        f'<div class="mut" style="margin-top:6px">recommended parameter-ensemble CV '
+        f"{_plain(rel['band_cv'])}</div>"
+        f'<div class="mut" style="margin-top:6px">{html.escape(rel["disclaimer"])}</div>'
+        + (emp_rows or "")
+        + "</section>"
         '<div class="mut">Research-grade model output; not for clinical decision-making '
         " (doc/08). Runs are not reproduced trials.</div>"
         "</div></body></html>"

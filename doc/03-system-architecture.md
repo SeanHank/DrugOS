@@ -41,9 +41,10 @@ DrugOS is a **six-stage pipeline** of coupled models. The pipeline follows the t
     └───────────────────────────────┬────────────────────────────────────┘
                                      ▼
    ┌─────────────────────────────────────────────────────────────────────┐
-   │  PHASE 6  Uncertainty & Decision Layers (D21-D24)                   │
-   │  [parameter ensemble (D21)] [virtual cohort (D22)]                 │
-   │  [global/local sensitivity + drivers (D23)] [prospective rerun (D24)]│
+│  PHASE 6  Uncertainty & Decision Layers (D21-D26)                   │
+  │  [parameter ensemble (D21)] [virtual cohort (D22)]                 │
+  │  [global/local sensitivity + drivers (D23)] [prospective rerun (D24)]│
+  │  [predictive-regime reliability (D25)] [measured/empirical (D26)]    │
    └───────────────────────────────┬─────────────────────────────────────┘
                                      ▼
    ┌─────────────────────────────────────────────────────────────────────┐
@@ -97,6 +98,7 @@ DrugOS is a **six-stage pipeline** of coupled models. The pipeline follows the t
 - **D22 Virtual cohort** — anthropometric sampling (sex/age/BMI, deterministic seed) runs the full pipeline per individual at the same dose → population risk quantiles and grade ≥ 1 / ≥ 2 incidence.
 - **D23 Sensitivity & drivers** — one-at-a-time log-sensitivities (`local_sensitivity`) plus Saltelli first/total Sobol indices (`run_sobol_sensitivity`) over the D21 key set, ranking the drivers of each endpoint.
 - **D24 Prospective rerun** — reproducibility runbook (fixed-seed determinism) and held-out profile/dose re-validation, registered as validation cases (doc/08).
+- **D25/D26 Predictive-regime reliability & measured/empirical overrides** — `reliability.py` classifies every run into one of six predictive regimes (weakest evidence axis dominates) and emits `trust.reliability` (regime/label/basis/band_cv/disclaimer); the regime CV feeds D21's parameter ensemble; `--measured` / `Measurements` override true parameters into the same full-fidelity chain (full PK → `measured_in_range_on_label`); `--empirical` / `EmpiricalObservations` adds observed-vs-predicted fold-error rows to `trust.empirical_agreement`. DISCLAIMER §2 is thereby executable: given all true parameters of a drug and a human body, predict the real effects, with reliability and disagreement always disclosed (doc/12 §7.3, doc/07 D25/D26).
 
 ## 3. Data Contract (Interface Between Stages)
 

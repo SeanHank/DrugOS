@@ -13,7 +13,7 @@ the whole biology on the way rendered as equations you can read.
 
 <p align="center">
   <a href="https://www.python.org/downloads/"><img alt="Python 3.11+" src="https://img.shields.io/badge/Python-3.11%2B-4b7bec?logo=python&logoColor=fff&labelColor=232946"></a>
-  <a href="#validation--quality-gates"><img alt="Validation 36/36" src="https://img.shields.io/badge/Validation-36%2F36%20green-2acc74?style=flat"></a>
+  <a href="#validation--quality-gates"><img alt="Validation 38/38" src="https://img.shields.io/badge/validation-38%2F38%20green-2acc74?style=flat"></a>
   <a href="#validation--quality-gates"><img alt="Coverage 100%" src="https://img.shields.io/badge/Coverage-100%25-2acc74?style=flat"></a>
   <a href="https://github.com/"><img alt="AGPL-3.0" src="https://img.shields.io/badge/License-AGPL--3.0-5865f2?style=flat"></a>
   <a href="doc/09-quality-gate.md"><img alt="Lint" src="https://img.shields.io/badge/Lint-ruff%20+%20mypy%20--strict-9855e2?style=flat"></a>
@@ -59,7 +59,7 @@ Pathway    signal transduction (QSP ODEs — Huang/Levchenko SBML MAPK cascade)
 
 | Layer | What it simulates | Mechanism |
 |---|---|---|
-| **Exposure** | C(t) in 83 tissue/plasma compartments; permeability/Fa-gated and logS solubility-limited oral absorption; opt-in tubular secretion, Michaelis–Menten hepatic clearance, biliary excretion with enterohepatic recirculation and first-pass gut-wall extraction | PBPK + ADMET + RDKit molecular descriptors |
+| **Exposure** | C(t) in 83 tissue/plasma compartments; permeability/Fa-gated and logS solubility-limited oral absorption; full-fidelity (default-on, auto-anchored) tubular secretion, Michaelis–Menten hepatic clearance, biliary excretion with enterohepatic recirculation and first-pass gut-wall extraction | PBPK + ADMET + RDKit molecular descriptors |
 | **Target** | receptor binding & occupancy kinetics | affinity-driven occupancy model |
 | **Pathway** | signal transduction after exposure | QSP ODEs (Huang/Levchenko SBML MAPK cascade, vendored) |
 | **Organ — liver** | DILI trajectory, ALT/AST/bilirubin, Hy's Law | QST dose–response + mechanistic grade; cholestasis axis anchored to the de Bruijn & Rietjens 2024 bile-acid PBK (R-7) |
@@ -68,6 +68,7 @@ Pathway    signal transduction (QSP ODEs — Huang/Levchenko SBML MAPK cascade)
 | **Organ — CNS** | brain free exposure trajectory | passive blood–brain barrier model |
 | **Clinical** | graded biomarkers + composite verdict | three-line fusion (mechanistic / exposure / structural) |
 | **Decision** | 90 % uncertainty bands · cohort incidence · Sobol/OAT sensitivity · prospective anchoring | D21–D24 ensembles over the full pipeline |
+| **Reliability** | predictive-regime disclosure on every run (`trust.reliability`: novel < partial < off-label/extrapolated dose < validated in-range < measured), regime-driven ensemble breadth, measured true-parameter overrides, observed-vs-predicted agreement rows (`trust.empirical_agreement`) | `reliability.py` (DISCLAIMER §2 made executable — doc/12 §7.3) |
 
 ## Try it in under a minute
 
@@ -102,6 +103,9 @@ drugos run --benchmark dofetilide --dose 0.5 --format json --out reports/
 
 # decision study: uncertainty ensemble + virtual cohort + global sensitivity
 drugos study --benchmark dofetilide --n-unc 17 --n-pop 16 --n-sobol 8 --out studies/
+
+# reliability: measured true-parameter overrides + observed-data comparison
+drugos run --benchmark acetaminophen --measured '{"fup": 0.75, "cl_hep_l_h": 22.0, "cl_renal_l_h": 2.0}' --empirical '{"plasma_cmax_mg_l": 12.0}' --format json --out reports/
 
 # interactive web playground
 drugos serve --port 8080            # open http://127.0.0.1:8080
@@ -168,7 +172,7 @@ estimator that re-derives every clearance/AUC result in the R runtime (R-1,
 agreement gated ≤ 2 %).
 
 `validation/` holds the tier ladder; `python validation/run_validation.py`
-regenerates `validation/report.md` (currently **36/36 cases green**):
+regenerates `validation/report.md` (currently **38/38 cases green**):
 
 | Tier | Case | Checks |
 |---|---|---|
@@ -186,11 +190,12 @@ regenerates `validation/report.md` (currently **36/36 cases green**):
 | L2 limit | clearance realism (secretion / gut-wall / MM / EHC) | single-pool secretion urine fraction analytic; F = Fa·(1−Eh)·(1−Eg); MM low-dose Vmax/Km slope + saturation; mass-conservative EHC |
 | L2 limit | Cheng–Prusoff IC50→Ki | Ki = IC50/(1+[S]/Km); default [S]/Km=1 reproduces Ki=IC50/2; BSEP/CYP3A4/hERG anchors; invalid input rejected |
 | L2 limit | per-CYP hepatic kinetics | abundance-scaled Vmax from the `CYP_ABUNDANCE_PMOL_MG` table; isoform additivity = lumped twin; doubling content → double slope; Hill sigmoid; parameter rejection |
-| L2 limit | native TMDD drug disposition | reversible mass closure; internalized sink clears drug; dose-disproportional retention; quasi-steady DR/R = D/Kd; AUC falls vs free twin; off-by-default crossing |
-| L2 limit | multi-layer transdermal permeation | Fick steady flux = composite P_eff·A·C_surf (±2%); interface partitions recovered; SC barrier + diffusivity responsiveness; mass closure; off-by-default |
-| L2 limit | sympathetic-suppression branch | IC50 free exposure halves HR and SV → CO = Q/4 (pa−pv = tone²·(MAP−CVP)); zero-exposure baseline + off-by-default; saturating exposure → CVP floor; monotone exposure-response; degenerate inputs rejected |
-| L2 limit | immune-mediated DILI QST | steady-state I_ss = k_recruit·hazard/(k_recruit+k_decay); immune_weight=0 inert + off-by-default; immune_weight>0 raises dead_frac; monotone exposure-response; degenerate inputs rejected |
-| L2 limit | ACAT-lite multi-segment SI | mass conservation (zero clearance: state_total = dose); per-segment solubility cap produces dissolution-limited feces; more segments change dissolution dynamics; si_segments=0 rejected; off-by-default identical to single-SI |
+| L2 limit | native TMDD drug disposition | reversible mass closure; internalized sink clears drug; dose-disproportional retention; quasi-steady DR/R = D/Kd; AUC falls vs free twin; default-on (auto-engaged at the primary-affinity panel site in full runs) |
+| L2 limit | multi-layer transdermal permeation | Fick steady flux = composite P_eff·A·C_surf (±2%); interface partitions recovered; SC barrier + diffusivity responsiveness; mass closure; default-on (auto-engaged for the transdermal route in full runs) |
+| L2 limit | sympathetic-suppression branch | IC50 free exposure halves HR and SV → CO = Q/4 (pa−pv = tone²·(MAP−CVP)); zero-exposure baseline preserved; saturating exposure → CVP floor; monotone exposure-response; degenerate inputs rejected; default-on (null-effect anchor auto-assigned in full runs) |
+| L2 limit | immune-mediated DILI QST | steady-state I_ss = k_recruit·hazard/(k_recruit+k_decay); immune_weight=0 inert in the baseline lane; immune_weight>0 raises dead_frac; monotone exposure-response; degenerate inputs rejected; default-on (auto-anchored in full runs) |
+| L2 limit | ACAT-lite multi-segment SI | mass conservation (zero clearance: state_total = dose); per-segment solubility cap produces dissolution-limited feces; more segments change dissolution dynamics; si_segments=0 rejected; baseline lane identical to single-SI; default-on (si_segments=3 in full runs) |
+| L1 self-consistency | **E2E full-chain + trust** | real chain — structure → ADMET-AI → spec → pipeline → contract → rendered report — on two unrelated molecules: determinism, 8-section contract, Cmax > 0, Fa ∈ (0,1], per-molecule `trust` record (fidelity lane / anchors / G5 policy / class priors / engaged terms / estimates), artifacts written |
 
 **Quality gate** — `python scripts/release.py gates` is the single release gate:
 `scripts/release.py` (the merged successor of the former `quality_gate.sh`)
@@ -200,7 +205,7 @@ runs G1–G4 and a **no-silent-fallback audit**:
 - **G2** mypy `--strict` across `src/drugos` — no errors
 - **G3** pytest with **100 % branch coverage** of `src/drugos`, no
   exclusions
-- **G4** validation suite — 36/36 green, report regenerated
+- **G4** validation suite — 38/38 green, report regenerated
 - **G5** fallback audit — every `except` handler in the package must surface an
   explicit error; silent swallowing is a hard failure (inventory pinned in
   `scripts/fallback_allowlist.json`)
@@ -225,9 +230,11 @@ CI (`.github/workflows/ci.yml`) automates releases on top of the quality gate:
    the artifacts attached.
 
 Locally, `scripts/release.py` does the same bookkeeping in one shot: runs the
-four gates + fallback audit, bumps the project-wide version (`YYYY.M.V`),
-rewrites the version / status numbers across `README.md` and `doc/*.md`, and
-writes `build/release_status.json`.
+six gates (G1-G6, including the fallback audit and the marker audit), syncs
+the project-wide version (`YYYY.M.V`) from an
+explicit `--version` (never auto-bumped), rewrites the version / status numbers
+across `README.md`, `doc/*.md` and the web banner, and writes
+`build/release_status.json`.
 
 Release → push to `main` or
 `git tag 2026.9.1 && git push --tags`. Version scheme `YYYY.M.V`.

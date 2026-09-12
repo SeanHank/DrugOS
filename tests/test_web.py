@@ -51,7 +51,13 @@ def test_run_default(client: object) -> None:
     r = client.post("/api/run", json={"benchmark": "dofetilide", "dose": 0.5})
     assert r.status_code == 200
     data = r.get_json()
-    assert data["clinical"]["verdict"].startswith("High composite risk")
+    # Full fidelity auto-engages a TMDD sink at the hERG site, which lowers a
+    # 0.5 mg dofetilide run from "High" to "Elevated composite risk" — the
+    # cardiac endpoint is still the flagged one (re-baselined under the default
+    # mandated realism, doc/06 §6).
+    assert data["clinical"]["verdict"].startswith(
+        ("High composite risk", "Elevated composite risk")
+    )
     assert "cns" in data["organ"]
     assert data["organ"]["cardiac"]["tdpr_band"] != ""
     assert data["occupancy"]["primary"] > 0.0
@@ -63,6 +69,30 @@ def test_run_default(client: object) -> None:
 def test_run_unknown_benchmark(client: object) -> None:
     r = client.post("/api/run", json={"benchmark": "nope"})
     assert r.status_code == 400
+
+
+def test_run_reliability_and_measured_payload(client: object) -> None:
+    # DISCLAIMER §2: default (benchmark) run reports the validated regime.
+    r = client.post("/api/run", json={"benchmark": "acetaminophen"})
+    assert r.status_code == 200
+    reliability = r.get_json()["trust"]["reliability"]
+    assert reliability["regime"] == "validated_in_range_on_label"
+    assert reliability["band_cv"] == 0.2
+    # a measured-true-parameters override is accepted through the same endpoint
+    r2 = client.post(
+        "/api/run",
+        json={
+            "benchmark": "acetaminophen",
+            "measured": {"fup": 0.75, "cl_hep_l_h": 22.0, "cl_renal_l_h": 2.0},
+            "empirical": {"plasma_cmax_mg_l": 12.0},
+        },
+    )
+    assert r2.status_code == 200
+    data2 = r2.get_json()
+    assert data2["trust"]["reliability"]["regime"] == "measured_in_range_on_label"
+    assert data2["trust"]["empirical_agreement"] is not None
+    obs = data2["trust"]["empirical_agreement"]["observations"][0]
+    assert obs["endpoint"] == "plasma_cmax_mg_l"
 
 
 def test_run_robustness_flags(client: object) -> None:

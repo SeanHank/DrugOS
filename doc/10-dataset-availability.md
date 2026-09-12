@@ -1,6 +1,6 @@
 # Dataset Requirements, Availability & Scientific Comparability
 
-> Companion to `doc/04-data-sources.md` (catalog), `doc/05-methodology-pipeline.md`
+> Companion to `doc/04-data-sources.md` (the register), `doc/05-methodology-pipeline.md`
 > (what each stage consumes), `doc/11-download-status.md` (what is actually on
 > disk today), and `data/README.md` (vendoring + checksum policy).
 > Dates are retrieve/cutoff aware; every commercial dataset below requires an
@@ -216,7 +216,7 @@ Priority ranking follows `doc/04 §3` (ingestion order). For each row:
    real tables (cheapest, highest trust).
 2. **P3 hERG + P4 DILI** exposure-ratio calibration — converts two toxicity
    lines from calibrated priors to data-fit discriminants.
-3. **P2 ChEMBL/DrugBank** — kills the "class-median panel" simplification.
+3. **P2 ChEMBL/DrugBank** — replaces the "class-median panel" default lane.
 4. **P5/P6 pathway/organ** — highest effort; topology without kinetic rates
    does not raise realism (must pair with BRENDA/SABIO-RK rate sets).
 5. **R bridge (`scripts/r_crossval`)**: operate the P1/P3 fit lines in R's

@@ -129,7 +129,7 @@ def test_combined_stress_boundaries() -> None:
 
 
 def test_combined_stress_immune_axis_inert_by_default() -> None:
-    # The immune-mediated DILI axis is a stub: default immune_weight is 0 so
+    # The immune-mediated DILI axis is inert by default: immune_weight is 0 so
     # the validated cholestasis/ATP/GSH composition is exactly preserved.
     assert combined_stress(1.0, 0.0, 0.0, immune=1.0) == pytest.approx(1.0)
     assert combined_stress(0.0, 1.0, 1.0, immune=1.0) == pytest.approx(0.0)

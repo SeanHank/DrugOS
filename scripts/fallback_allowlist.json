@@ -1,20 +1,26 @@
 {
   "handlers": {
     "src/drugos/web/app.py": [
-      63
+      69
     ],
     "src/drugos/cli.py": [
-      213,
-      345
+      251,
+      274,
+      417
     ],
     "src/drugos/rbridge/__init__.py": [
       122
+    ],
+    "src/drugos/reliability.py": [
+      301
     ]
   },
   "notes": {
-    "src/drugos/web/app.py:63": "converts retrieval/spec errors into an explicit HTTP 400 JSON error body (return jsonify({'error': ...}), 400).",
-    "src/drugos/cli.py:213": "prints the error to stderr and returns a nonzero exit code (message surfaced to the user).",
-    "src/drugos/cli.py:345": "same pattern for the study command: stderr message + nonzero exit code.",
-    "src/drugos/rbridge/__init__.py:122": "converts rpy2/R import failure into an explicit RuntimeError with install guidance (required-R policy; no silent fallback)."
+    "src/drugos/web/app.py:69": "converts retrieval/spec errors into an explicit HTTP 400 JSON error body (return jsonify({'error': ...}), 400).",
+    "src/drugos/cli.py:251": "prints the error to stderr and returns a nonzero exit code (message surfaced to the user).",
+    "src/drugos/cli.py:274": "_load_json re-raises malformed option text as an explicit ValueError (surfaced by the caller).",
+    "src/drugos/cli.py:417": "same pattern for the study command: stderr message + nonzero exit code.",
+    "src/drugos/rbridge/__init__.py:122": "converts rpy2/R import failure into an explicit RuntimeError with install guidance (required-R policy; no silent fallback).",
+    "src/drugos/reliability.py:301": "measurement-field coercion re-raises malformed values as an explicit ValueError naming the offending value (no silent acceptance)."
   }
 }

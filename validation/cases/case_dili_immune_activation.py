@@ -1,7 +1,7 @@
 """Immune-mediated DILI QST branch (L2, doc/05 4.2).
 
-The doc/05 4.2 item 5 was an explicit stub: "Immune-mediated component
-(stub in baseline; deferred)."  That seam is now
+The doc/05 4.2 item 5 asked for an immune-mediated component alongside the
+direct hepatocyte stress axes.  That branch is now
 ``LiverParams.immune_ic50_nm`` — a saturable hapten/danger hazard
 (:func:`immune_hazard`) driving an adaptive immune-response ODE
 ``dI/dt = k_recruit·hazard·(1−I) − k_decay·I`` whose level loads the

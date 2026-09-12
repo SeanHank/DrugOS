@@ -1,11 +1,17 @@
 """Smoke tests for the DrugOS development environment."""
 
+import tomllib
+from pathlib import Path
+
 from drugos import __version__
 from drugos.version import PACKAGE_VERSION
 
 
-def test_project_version() -> None:
-    assert __version__ == "2026.9.0"
+def test_project_version_matches_pyproject() -> None:
+    project_root = Path(__file__).resolve().parents[1]
+    with (project_root / "pyproject.toml").open("rb") as fh:
+        pyproject_version = tomllib.load(fh)["project"]["version"]
+    assert __version__ == pyproject_version
     assert PACKAGE_VERSION == __version__
 
 

@@ -58,6 +58,12 @@ def create_app(host: str = "127.0.0.1", port: int = 8080) -> Flask:
                 height=_float(payload.get("height")) or 170.0,
                 weight=_float(payload.get("weight")) or 70.0,
                 no_pathway=bool(payload.get("no_pathway")),
+                measured=(
+                    payload.get("measured") if isinstance(payload.get("measured"), dict) else None
+                ),
+                empirical=(
+                    payload.get("empirical") if isinstance(payload.get("empirical"), dict) else None
+                ),
             )
             result = run_pipeline(spec)
         except (ValueError, RuntimeError) as exc:

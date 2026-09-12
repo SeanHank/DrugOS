@@ -11,7 +11,8 @@ document consumed by ``drugos.report``, the CLI and the web playground.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from collections.abc import Callable
+from dataclasses import dataclass, field, fields, replace
 from typing import Any
 
 import numpy as np
@@ -56,6 +57,13 @@ from drugos.pk.simulate import PBPKResult, PkMetrics, compute_pk_metrics, simula
 from drugos.pk.skin import SkinLayers
 from drugos.rbridge import RVerify
 from drugos.rbridge import verify_pk as _r_verify_pk
+from drugos.reliability import (
+    EmpiricalObservations,
+    Measurements,
+    agreement_rows,
+    apply_measurements,
+    reliability_of,
+)
 from drugos.target.occupancy import (
     PanelEngagement,
     TargetOccupancyResult,
@@ -70,6 +78,219 @@ _DEFAULT_SCR_BASE_UMOL_L = 80.0
 _ALT_ULN_U_L = 40.0
 _BILI_ULN_MG_DL = 1.0
 _CNS_IC50_DEFAULT_NM = 1.0e5
+
+_REALISM_TERMS: tuple[tuple[str, Callable[[RunSpec], bool]], ...] = (
+    ("tubular secretion", lambda s: s.cl_sec_l_h > 0),
+    ("biliary excretion + enterohepatic recirculation", lambda s: s.cl_bil_l_h > 0),
+    ("first-pass gut-wall extraction", lambda s: s.gut_extraction_eg > 0),
+    (
+        "saturable (Michaelis-Menten) hepatic clearance",
+        lambda s: s.hepatic_vmax_mg_h is not None,
+    ),
+    ("per-CYP abundance-scaled kinetics", lambda s: bool(s.cyp_terms)),
+    ("TMDD target binding (native mass balance)", lambda s: bool(s.target_binding)),
+    ("multi-layer transdermal skin permeation", lambda s: s.skin_layers is not None),
+    (
+        "immune-mediated DILI axis",
+        lambda s: s.dili_immune_ic50_nm is not None or s.dili_immune_weight is not None,
+    ),
+    (
+        "sympathetic-suppression cardiac branch",
+        lambda s: s.beta_block_ic50_nm is not None,
+    ),
+    ("organ-feedback loop (coupled clearance)", lambda s: s.feedback_loop > 0),
+    ("SC/IM depot absorption", lambda s: s.sc_im_ka_per_h is not None),
+    (
+        "multi-segment (ACAT) small-intestine absorption",
+        lambda s: s.si_segments is not None and s.si_segments >= 2,
+    ),
+)
+
+#: Realism scalars a *measured* value (including a measured zero — a
+#: determined absence) legitimately satisfies.  A user-supplied measured zero
+#: for tubular/biliary clearance or gut-wall extraction is a true parameter,
+#: never a silent opt-out (doc/07 D26): the term is disclosed as measured
+#: rather than dropped from the full-fidelity contract.
+_MEASURED_TERM_FIELDS: dict[str, str] = {
+    "tubular secretion": "cl_sec_l_h",
+    "biliary excretion + enterohepatic recirculation": "cl_bil_l_h",
+    "first-pass gut-wall extraction": "gut_extraction_eg",
+}
+
+# Full-fidelity auto-anchor priors (doc/12 §7.2): values synthesized from the
+# ADMET-AI evidence vector + phys-chem priors so the novel-drug path engages
+# every realism term by default.  A null-effect anchor is the honest
+# pharmacology of a non-blocker (IC50 several orders above any therapeutic
+# free exposure), never an assertion of blockade.
+_MM_KM_MG_L_FULL = 1.0
+_BILIARY_CLEARANCE_FRACTION_LOG_P_HIGH = 0.30
+_BILIARY_CLEARANCE_FRACTION_LOG_P_LOW = 0.15
+_BILIARY_CLEARANCE_FRACTION_PRIOR = 0.20
+_DILI_IMMUNE_IC50_FRACTION = 0.30
+_NULL_IMMUNE_IC50_NM = 1.0e6
+_NULL_SYMPATHETIC_IC50_NM = 1.0e6
+_SI_SEGMENTS_FULL = 3
+_DEPOT_KA_PRIOR_1H = 0.08
+
+
+class RealismError(ValueError):
+    """Raised when a full-fidelity run would silently degrade.
+
+    A ``fidelity="full"`` run engages every ADME/pharmacology realism term.
+    When a term cannot be engaged because the required data or an explicit
+    anchor is missing, ``run_pipeline`` raises instead of quietly downgrading
+    (doc/07 G5/G6, doc/12 §7.2).  The caller either supplies the missing
+    values or explicitly opts into ``fidelity="baseline"``, whose every
+    non-engaged term is then disclosed in the trust record.
+    """
+
+
+def _engaged_realism_terms(spec: RunSpec) -> list[str]:
+    out = [name for name, pred in _REALISM_TERMS if pred(spec)]
+    meas = spec.measurements
+    if meas is not None:
+        for name, field in _MEASURED_TERM_FIELDS.items():
+            if name not in out and getattr(meas, field, None) is not None:
+                out.append(f"{name} (measured)")
+    return out
+
+
+def _available_realism_terms(spec: RunSpec) -> list[str]:
+    return [name for name, pred in _REALISM_TERMS if not pred(spec)]
+
+
+_HEPATIC_PAIR_TERMS = (
+    "saturable (Michaelis-Menten) hepatic clearance",
+    "per-CYP abundance-scaled kinetics",
+)
+
+
+def _route_applicable(name: str, routes: set[Route]) -> bool:
+    if name == "multi-layer transdermal skin permeation":
+        return Route.TRANSDERMAL in routes
+    if name == "SC/IM depot absorption":
+        return bool(routes & {Route.SUBCUTANEOUS, Route.INTRAMUSCULAR})
+    if name == "multi-segment (ACAT) small-intestine absorption":
+        return Route.ORAL in routes
+    if name == "first-pass gut-wall extraction":
+        return Route.ORAL in routes
+    return True
+
+
+def _applied_off_terms(spec: RunSpec) -> list[str]:
+    """Realism terms applicable to the spec's routes that are not engaged."""
+    routes = {ev.route for ev in spec.dose_plan.events}
+    meas = spec.measurements
+
+    def measured(name: str) -> bool:
+        field = _MEASURED_TERM_FIELDS.get(name)
+        return field is not None and meas is not None and getattr(meas, field, None) is not None
+
+    return [
+        name
+        for name, pred in _REALISM_TERMS
+        if _route_applicable(name, routes)
+        and name not in _HEPATIC_PAIR_TERMS
+        and not pred(spec)
+        and not measured(name)
+    ]
+
+
+def _missing_full_fidelity(spec: RunSpec) -> list[str]:
+    """Fail-closed check: terms whose absence in a full run is a silent downgrade."""
+    off = _applied_off_terms(spec)
+    missing = []
+    if spec.hepatic_vmax_mg_h is None and not spec.cyp_terms:
+        missing.append("saturable (Michaelis-Menten) or per-CYP abundance-scaled hepatic clearance")
+    missing.extend(off)
+    return missing
+
+
+def _degraded_realism_terms(spec: RunSpec) -> list[str]:
+    """Explicit, never-silent disclosure of every non-engaged realism term.
+
+    In a full-fidelity run the list is empty by construction (the pipeline
+    raises ``RealismError`` otherwise).  In an explicitly opted-in baseline
+    run every applicable non-engaged term is named as a deliberate opt-out,
+    so a report can never hide what the model did not do.  Route-inapplicable
+    terms (e.g. skin permeation for an oral dose) are never reported degraded.
+    """
+    if spec.fidelity == "baseline":
+        off = _applied_off_terms(spec)
+        if spec.hepatic_vmax_mg_h is None and not spec.cyp_terms:
+            off.append("saturable (Michaelis-Menten) or per-CYP abundance-scaled hepatic clearance")
+        return [
+            f"{term}: explicit fidelity='baseline' opt-out (validated linear-baseline lane)"
+            for term in off
+        ]
+    missing = _missing_full_fidelity(spec)
+    if not missing:
+        return []
+    return [f"{term}: guardrail — full-fidelity run will raise RealismError" for term in missing]
+
+
+def _assert_full_fidelity(spec: RunSpec) -> None:
+    """Fail closed: no silent downgrade in a full-fidelity run (doc/07 G5/G6)."""
+    if spec.fidelity == "baseline":
+        return
+    missing = _missing_full_fidelity(spec)
+    if missing:
+        raise RealismError(
+            "full-fidelity run refused: realism terms would silently stay off -> "
+            + "; ".join(missing)
+            + ". Supply the missing values/estimates, or set fidelity='baseline' "
+            "for an explicit linear-baseline run whose every off term is disclosed."
+        )
+
+
+def fidelity_provenance(spec: RunSpec, exposure: ExposureProfile) -> dict[str, Any]:
+    """Serialize the fidelity provenance (trust record) of a full-chain run.
+
+    Every report must disclose where each admitted value came from (doc/08
+    risk register, doc/07 G4/G5): the production anchors wired into organ
+    readouts, the opt-in realism terms engaged vs left off, the panel sites
+    still on class-typical low-confidence priors, and the ADMET-AI heads used
+    as ML estimates. G5 forbids silent fallback: every term that contributes
+    to a readout is engaged in this record and accounts for its own value, and
+    no term is substituted by another without being named. The ``reliability``
+    block classifies
+    the run into its predictive regime (novel molecule / partial evidence /
+    off-label route / extrapolated dose / validated in-range / fully measured)
+    so the DISCLAIMER §2 reliability clause is an executable per-run disclosure
+    (doc/07 D25/D26).
+    """
+    anchors = [
+        "CKD-EPI 2021 race-free GFR baseline (R-6)",
+        "de Bruijn & Rietjens 2024 GCDCA bile-acid cholestasis PBK (R-7)",
+    ]
+    if spec.admet is not None and spec.admet.BBB is not None:
+        anchors.append("ADMET-AI BBB_Martins brain-partition head (R-4)")
+    if spec.admet is not None and spec.admet.hERG is not None:
+        anchors.append("corpus-calibrated hERG P->KD sieve (R-8)")
+    ml_estimates = None
+    if spec.admet is not None:
+        ml_estimates = [
+            f.name
+            for f in fields(spec.admet)
+            if f.name != "raw" and getattr(spec.admet, f.name) is not None
+        ]
+    return {
+        "policy": (
+            "no silent fallback (G5/G6); every admissible source and every "
+            "non-engaged realism term is named in this record"
+        ),
+        "fidelity": spec.fidelity,
+        "anchors_wired": anchors,
+        "cns_grading_anchored": exposure.cns_anchored,
+        "mechanism_terms_engaged": _engaged_realism_terms(spec),
+        "mechanism_terms_degraded": _degraded_realism_terms(spec),
+        "estimates": (
+            [{"term": k, "basis": v} for k, v in sorted(spec.estimate_basis.items())] or None
+        ),
+        "class_prior_sites": sorted(t.name for t in spec.panel if t.low_confidence),
+        "admet_ml_estimates": ml_estimates,
+        "reliability": reliability_of(spec, scaffold=benchmark_data(spec.molecule.name or "")),
+    }
 
 
 @dataclass(slots=True)
@@ -109,6 +330,11 @@ class RunSpec:
     gut_extraction_eg: float = 0.0
     skin_layers: SkinLayers | None = None
     name: str = "compound"
+    fidelity: str = "full"
+    si_segments: int | None = None
+    estimate_basis: dict[str, str] = field(default_factory=dict)
+    measurements: Measurements | None = None
+    empirical: EmpiricalObservations | None = None
 
     def __post_init__(self) -> None:
         if self.mw <= 0:
@@ -153,6 +379,10 @@ class RunSpec:
             )
         if not (0.0 <= self.gut_extraction_eg <= 0.9):
             raise ValueError("gut_extraction_eg must be in [0, 0.9]")
+        if self.fidelity not in ("full", "baseline"):
+            raise ValueError('fidelity must be "full" or "baseline"; got {self.fidelity!r}')
+        if self.si_segments is not None and self.si_segments < 1:
+            raise ValueError(f"si_segments must be >= 1 or None; got {self.si_segments}")
         for tb in self.target_binding:
             if tb.tissue not in TISSUE_LIST:
                 raise ValueError(
@@ -211,6 +441,7 @@ class RunResult:
     toxicity: ToxicityReport
     verdict: str
     r_verify: RVerify | None = None
+    empirical_agreement: dict[str, Any] | None = None
 
     def to_contract(self) -> dict[str, Any]:
         """Serialize the full run to the doc/03 report contract."""
@@ -318,8 +549,16 @@ class RunResult:
                     "beta_block_ic50_nm": self.exposure.beta_block_ic50_nm,
                 },
             },
+            "trust": self._trust_record(),
             "r_verify": None if self.r_verify is None else self.r_verify.to_dict(),
         }
+
+    def _trust_record(self) -> dict[str, Any]:
+        """The ``trust`` contract section (fidelity provenance + agreement)."""
+        trust = fidelity_provenance(self.spec, self.exposure)
+        if self.empirical_agreement is not None:
+            trust["empirical_agreement"] = self.empirical_agreement
+        return trust
 
 
 def _mg_l_to_nm(c_mg_l: float, mw: float) -> float:
@@ -530,16 +769,21 @@ def _absorption_params(spec: RunSpec) -> AbsorptionParams:
         return AbsorptionParams(
             k_depot_absorption=spec.sc_im_ka_per_h or 0.15,
             skin_layers=spec.skin_layers,
+            si_segments=spec.si_segments,
         )
     has_oral = any(ev.route is Route.ORAL for ev in spec.dose_plan.events)
     if not has_oral:
-        return AbsorptionParams(gut_extraction_eg=spec.gut_extraction_eg)
+        return AbsorptionParams(
+            gut_extraction_eg=spec.gut_extraction_eg,
+            si_segments=spec.si_segments,
+        )
     solubility = _admet_solubility_mg_ml(spec.admet, spec.mw)
     if spec.fa is not None:
         return AbsorptionParams(
             k_si_absorption=absorption_rate_from_fa(spec.fa),
             solubility_mg_ml=solubility,
             gut_extraction_eg=spec.gut_extraction_eg,
+            si_segments=spec.si_segments,
         )
     admet_fa = _admet_fa(spec.admet)
     if admet_fa is not None:
@@ -547,16 +791,19 @@ def _absorption_params(spec: RunSpec) -> AbsorptionParams:
             k_si_absorption=absorption_rate_from_fa(admet_fa),
             solubility_mg_ml=solubility,
             gut_extraction_eg=spec.gut_extraction_eg,
+            si_segments=spec.si_segments,
         )
-    return AbsorptionParams(gut_extraction_eg=spec.gut_extraction_eg)
+    return AbsorptionParams(gut_extraction_eg=spec.gut_extraction_eg, si_segments=spec.si_segments)
 
 
 def _organ_state(
     pk: PBPKResult,
     model: PBPKModel,
     spec: RunSpec,
+    *,
+    include_pathway: bool = True,
 ) -> tuple[
-    PanelEngagement,
+    PanelEngagement | None,
     TargetOccupancyResult | None,
     LiverTrajectory,
     NDArray,
@@ -573,15 +820,21 @@ def _organ_state(
     # The hERG site enters every downstream consumer (occupancy/primary signal,
     # QT drive, exposure anchors) at one effective KD — a measured override or,
     # for ADMET-AI-scored novel molecules, the predicted-hERG sieve.
-    panel = simulate_panel(
-        pk.t, liver_free, _herg_sieved_panel(spec), mw=spec.mw, n_eval=spec.n_eval
-    )
-
-    primary_signal = max(
-        (r for r in panel.results.values()),
-        key=lambda r: r.time_at_target_h,
-        default=None,
-    )
+    panel: PanelEngagement | None = None
+    primary_signal: TargetOccupancyResult | None = None
+    if include_pathway:
+        # The hERG site enters every downstream consumer (occupancy/primary
+        # signal, QT drive, exposure anchors) at one effective KD — a measured
+        # override or, for ADMET-AI-scored novel molecules, the predicted-hERG
+        # sieve.
+        panel = simulate_panel(
+            pk.t, liver_free, _herg_sieved_panel(spec), mw=spec.mw, n_eval=spec.n_eval
+        )
+        primary_signal = max(
+            (r for r in panel.results.values()),
+            key=lambda r: r.time_at_target_h,
+            default=None,
+        )
 
     liver_params = spec.liver_params or liver_params_from_panel(spec.panel)
     if spec.dili_immune_ic50_nm is not None:
@@ -595,9 +848,11 @@ def _organ_state(
     # Stage-3 pathway before the organ QST: the ERK/MAPK readout fold-change is
     # the proliferation signal that modulates hepatocyte regeneration, closing
     # the occupancy -> pathway -> organ -> phenotype chain (doc/05 4.2).
+    # Intermediate feedback-loop iterations skip it (only liver/kidney/cardiac
+    # feed the scaling pass); the final organ state runs the full chain.
     pathway: PathwayResult | None = None
     proliferation: NDArray | None = None
-    if spec.include_pathway and primary_signal is not None:
+    if include_pathway and spec.include_pathway and primary_signal is not None:
         pathway = simulate_sbml_pathway(
             primary_signal.t_h, primary_signal.occupancy, n_eval=spec.n_eval
         )
@@ -693,9 +948,16 @@ def run_pipeline(spec: RunSpec) -> RunResult:
     ``spec.feedback_loop`` (>0) re-runs PK with organ-dysfunction scaling
     (doc/05 4.5): each iteration re-derives hepatic/GFR scalings from the
     current organ state and resolves the PBPK model afresh.
+    Measured true parameters (``spec.measurements``) are applied first and
+    replace the machine auto-anchors; user-supplied empirical observations
+    (``spec.empirical``) are compared against the prediction and disclosed as
+    an explicit agreement diagnostic, never absorbed.
     """
     if spec.tmax_h <= 0:
         raise ValueError("tmax_h must be positive")
+
+    spec = apply_measurements(spec)
+    _assert_full_fidelity(spec)
 
     model = _panel_model(spec)
     pk = simulate_pbpk(model, tmax_h=spec.tmax_h, n_eval=spec.n_eval)
@@ -713,7 +975,7 @@ def run_pipeline(spec: RunSpec) -> RunResult:
             _pathway,
             _kpu,
             _cns_params,
-        ) = _organ_state(pk, model, spec)
+        ) = _organ_state(pk, model, spec, include_pathway=False)
         model = apply_pk_scaling(model, _organ_feedback(model, liver, kidney, _cardiac))
         pk = simulate_pbpk(model, tmax_h=spec.tmax_h, n_eval=spec.n_eval)
 
@@ -764,6 +1026,8 @@ def run_pipeline(spec: RunSpec) -> RunResult:
     )
 
     toxicity = _score_clinical(organ, exposure, spec.admet)
+    assert panel is not None  # final organ state always runs the full chain
+    empirical_agreement = _empirical_agreement(spec, metrics, liver, cardiac)
     return RunResult(
         name=spec.name,
         spec=spec,
@@ -778,7 +1042,35 @@ def run_pipeline(spec: RunSpec) -> RunResult:
         toxicity=toxicity,
         verdict=_verdict(toxicity),
         r_verify=_r_verify_pk(pk.t, pk.plasma_total, pk.dose_mg),
+        empirical_agreement=empirical_agreement,
     )
+
+
+def _empirical_agreement(
+    spec: RunSpec, metrics: PkMetrics, liver: LiverTrajectory, cardiac: CardiacResult
+) -> dict[str, Any] | None:
+    """Disclose observed-vs-predicted deviation when observations are given.
+
+    Disagreement with empirical data is the expected state of a mechanistic
+    model, not a bug (DISCLAIMER §2): supplied observations are never absorbed
+    into the parameterization — they are folded into the trust record as an
+    explicit ``empirical_agreement`` diagnostic.
+    """
+    if spec.empirical is None:
+        return None
+    predicted = {
+        "plasma_cmax_mg_l": metrics.cmax_mg_l,
+        "auc_last_mg_h_l": metrics.auc_last_mgh_l,
+        "peak_delta_qtc_ms": float(np.max(cardiac.delta_qtc_ms)),
+        "peak_alt_uln": liver.peak_alt_uln,
+    }
+    return {
+        "observations": agreement_rows(spec.empirical, predicted),
+        "policy": (
+            "disagreement with empirical data is the expected state of a "
+            "mechanistic model, not a bug — reported, not silenced (DISCLAIMER §2)"
+        ),
+    }
 
 
 def _grade_organ(
@@ -1037,8 +1329,143 @@ def _other_benchmark_affinities(name: str) -> tuple[float | None, float | None]:
     return qt, dili
 
 
+def _engage_full_fidelity(spec: RunSpec) -> RunSpec:
+    """Deterministically engage every realism term for novel drugs and benches.
+
+    Full-fidelity default (doc/12 §7.2): every ADME/pharmacology realism term
+    is filled from the ADMET-AI evidence vector and phys-chem priors.  Each
+    synthesized value is recorded with its derivation basis in ``estimate_basis``
+    so the trust record discloses the estimate and never a silent default.
+    Null-effect anchors are the honest pharmacology of a non-engager (a
+    non-beta-blocker and a no-immune-trigger molecule have IC50s orders above
+    any therapeutic exposure), not fabricated blockade.
+    """
+    if spec.fidelity != "full":
+        return spec
+    kw: dict[str, Any] = {"estimate_basis": dict(spec.estimate_basis)}
+    basis = kw["estimate_basis"]
+    admet = spec.admet
+
+    def admet_field(name: str) -> Any:
+        """Read an ADMET-AI head by name, tolerating the runtime namespace."""
+        return getattr(admet, name, None) if admet is not None else None
+
+    if spec.hepatic_vmax_mg_h is None and not spec.cyp_terms:
+        km = _MM_KM_MG_L_FULL
+        vmax = max(spec.cl_hep_l_h * km, 1e-3)
+        kw["hepatic_vmax_mg_h"] = vmax
+        kw["hepatic_km_mg_l"] = km
+        basis["hepatic_vmax_mg_h"] = (
+            "lumped saturable MM: Vmax = CL_h*Km, Km = 1 mg/L prior; the low-dose "
+            "slope Vmax/Km = CL_h preserves the linear clearance baseline"
+        )
+
+    if spec.cl_sec_l_h == 0:
+        pgp = admet_field("Pgp")
+        if pgp is None:
+            pgp = 0.5
+        cl_sec = max(spec.cl_renal_l_h * (0.5 + 0.5 * float(pgp)), 1e-4)
+        kw["cl_sec_l_h"] = cl_sec
+        basis["cl_sec_l_h"] = (
+            f"renal tubular secretion = CL_renal x (0.5 + 0.5 x P-gp) with "
+            f"P-gp substrate probability {float(pgp):.2f} (ADMET-AI Pgp_Broccatelli "
+            "head, or 0.5 neutral prior when absent)"
+        )
+
+    if spec.cl_bil_l_h == 0:
+        lp = admet_field("log_p_pred")
+        if lp is not None and lp >= 2.0:
+            frac = _BILIARY_CLEARANCE_FRACTION_LOG_P_HIGH
+            lp_desc = f"logP {lp:.2f} >= 2"
+        elif lp is not None:
+            frac = _BILIARY_CLEARANCE_FRACTION_LOG_P_LOW
+            lp_desc = f"logP {lp:.2f} < 2"
+        else:
+            frac = _BILIARY_CLEARANCE_FRACTION_PRIOR
+            lp_desc = "logP unavailable"
+        cl_bil = max(spec.cl_hep_l_h * frac, 1e-4)
+        kw["cl_bil_l_h"] = cl_bil
+        basis["cl_bil_l_h"] = (
+            f"biliary excretion = {frac:.0%} x CL_h phys-chem prior ({lp_desc}) + "
+            "enterohepatic recirculation (k_bile_emptying stays at 1.0/h)"
+        )
+
+    if spec.gut_extraction_eg == 0:
+        cyp34 = admet_field("cyp3a4_inhibitor")
+        if cyp34 is None:
+            cyp34 = 0.5
+        eg = min(max(0.10 + 0.30 * float(cyp34), 0.05), 0.60)
+        kw["gut_extraction_eg"] = eg
+        basis["gut_extraction_eg"] = (
+            f"first-pass gut-wall extraction = 0.10 + 0.30 x P(CYP3A4 inhibition) "
+            f"(head {float(cyp34):.2f}, or 0.5 neutral prior when absent)"
+        )
+
+    if spec.si_segments is None:
+        kw["si_segments"] = _SI_SEGMENTS_FULL
+        basis["si_segments"] = (
+            f"ACAT-lite multi-segment SI = {_SI_SEGMENTS_FULL} equal sub-compartments "
+            "(full-resolution default, doc/12 L10)"
+        )
+
+    if spec.feedback_loop == 0:
+        kw["feedback_loop"] = 1
+        basis["feedback_loop"] = "organ-feedback loop = 1 coupled re-run (doc/05 4.5)"
+
+    routes = {ev.route for ev in spec.dose_plan.events}
+    if spec.sc_im_ka_per_h is None and routes & {Route.SUBCUTANEOUS, Route.INTRAMUSCULAR}:
+        kw["sc_im_ka_per_h"] = _DEPOT_KA_PRIOR_1H
+        basis["sc_im_ka_per_h"] = f"SC/IM depot absorption ka = {_DEPOT_KA_PRIOR_1H}/h class prior"
+    if spec.skin_layers is None and Route.TRANSDERMAL in routes:
+        kw["skin_layers"] = SkinLayers()
+        basis["skin_layers"] = (
+            "transdermal route: default 4-layer skin membrane (SkinLayers defaults)"
+        )
+
+    if spec.dili_immune_ic50_nm is None:
+        if spec.dili_ic50_nm is not None:
+            immune_ic50 = spec.dili_ic50_nm * _DILI_IMMUNE_IC50_FRACTION
+            immune_basis = (
+                f"immune-DILI IC50 = DILI-hazard IC50 x {_DILI_IMMUNE_IC50_FRACTION} "
+                f"({spec.dili_ic50_nm:g} nM x {_DILI_IMMUNE_IC50_FRACTION}) immune fraction"
+            )
+        else:
+            immune_ic50 = _NULL_IMMUNE_IC50_NM
+            immune_basis = (
+                "immune-DILI null-effect anchor: no immune-mediated DILI trigger "
+                f"predicted (IC50 {_NULL_IMMUNE_IC50_NM:g} nM)"
+            )
+        kw["dili_immune_ic50_nm"] = immune_ic50
+        if spec.dili_immune_weight is None:
+            kw["dili_immune_weight"] = 0.5
+        basis["dili_immune_ic50_nm"] = immune_basis
+
+    if spec.beta_block_ic50_nm is None:
+        kw["beta_block_ic50_nm"] = _NULL_SYMPATHETIC_IC50_NM
+        basis["beta_block_ic50_nm"] = (
+            "sympathetic branch null-effect anchor: beta-blockade predicted absent "
+            f"(IC50 {_NULL_SYMPATHETIC_IC50_NM:g} nM, orders above any therapeutic exposure)"
+        )
+
+    if not spec.target_binding:
+        primary = min(spec.panel, key=lambda t: t.kd_nm)
+        tissue = "heart" if "hERG" in primary.name else "liver"
+        kw["target_binding"] = (TargetBinding(tissue=tissue, target=primary),)
+        basis["target_binding"] = (
+            f"native TMDD at the primary-affinity site {primary.name!r} "
+            f"(kd {primary.kd_nm:g} nM, tissue {tissue}, abundance r0 = {primary.r0_nm:g} nM): "
+            "the mass-balance sink scales with the site's affinity and abundance — "
+            "trivially small unless a high-affinity, high-abundance site is engaged"
+        )
+
+    return replace(spec, **kw)
+
+
 def spec_from_benchmark_data(
-    bench: _BenchmarkLike, dose_override_mg: float | None = None
+    bench: _BenchmarkLike,
+    dose_override_mg: float | None = None,
+    measurements: Measurements | None = None,
+    empirical: EmpiricalObservations | None = None,
 ) -> RunSpec:
     """Build a ``RunSpec`` from a validation ``Benchmark``-like instance."""
     cl_hep, cl_renal = _clearance_from_published(bench)
@@ -1052,22 +1479,26 @@ def spec_from_benchmark_data(
     if bench.route.startswith("oral") and "f_abs" in bench.published:
         lo, hi = bench.published["f_abs"]
         fa = float(getattr(bench, "fa_override", None) or (lo + hi) / 2.0)
-    return RunSpec(
-        name=bench.name,
-        molecule=mol,
-        profile=HumanProfile(sex=Sex.MALE),
-        dose_plan=_benchmark_plan(bench, dose_override_mg),
-        cl_hep_l_h=cl_hep,
-        cl_renal_l_h=cl_renal,
-        mw=mw,
-        fup=bench.fup,
-        bp=bench.bp,
-        qt_ic50_nm=qt_ic50,
-        dili_ic50_nm=dili_ic50,
-        liver_params=liver_params,
-        tmax_h=bench.tmax_h,
-        n_eval=bench.n_eval,
-        fa=fa,
+    return _engage_full_fidelity(
+        RunSpec(
+            name=bench.name,
+            molecule=mol,
+            profile=HumanProfile(sex=Sex.MALE),
+            dose_plan=_benchmark_plan(bench, dose_override_mg),
+            cl_hep_l_h=cl_hep,
+            cl_renal_l_h=cl_renal,
+            mw=mw,
+            fup=bench.fup,
+            bp=bench.bp,
+            qt_ic50_nm=qt_ic50,
+            dili_ic50_nm=dili_ic50,
+            liver_params=liver_params,
+            tmax_h=bench.tmax_h,
+            n_eval=bench.n_eval,
+            fa=fa,
+            measurements=measurements,
+            empirical=empirical,
+        )
     )
 
 
@@ -1098,6 +1529,8 @@ def spec_from_admet(
     beta_block_ic50_nm: float | None = None,
     dili_immune_ic50_nm: float | None = None,
     dili_immune_weight: float | None = None,
+    measurements: Measurements | None = None,
+    empirical: EmpiricalObservations | None = None,
 ) -> RunSpec:
     """Build a ``RunSpec`` for a novel molecule entirely from ADMET-AI.
 
@@ -1129,42 +1562,50 @@ def spec_from_admet(
         cl_renal_l_h = glom_filtration_clearance(physiology.gfr_l_min * 1000.0, fup)
     has_oral = any(ev.route is Route.ORAL for ev in dose_plan.events)
     fa = _admet_fa(admet) if has_oral else None
-    return RunSpec(
-        name=name,
-        molecule=parsed,
-        profile=profile,
-        dose_plan=dose_plan,
-        cl_hep_l_h=cl_hep_l_h,
-        cl_renal_l_h=cl_renal_l_h,
-        mw=mw,
-        fup=fup,
-        bp=1.0,
-        admet=admet,
-        fa=fa,
-        include_pathway=include_pathway,
-        sc_im_ka_per_h=sc_im_ka_per_h,
-        cl_sec_l_h=cl_sec_l_h,
-        cl_bil_l_h=cl_bil_l_h,
-        bile_emptying_1h=bile_emptying_1h,
-        hepatic_vmax_mg_h=hepatic_vmax_mg_h,
-        hepatic_km_mg_l=hepatic_km_mg_l,
-        cyp_terms=cyp_terms,
-        target_binding=target_binding,
-        gut_extraction_eg=gut_extraction_eg,
-        skin_layers=skin_layers,
-        beta_block_ic50_nm=beta_block_ic50_nm,
-        dili_immune_ic50_nm=dili_immune_ic50_nm,
-        dili_immune_weight=dili_immune_weight,
+    return _engage_full_fidelity(
+        RunSpec(
+            name=name,
+            molecule=parsed,
+            profile=profile,
+            dose_plan=dose_plan,
+            cl_hep_l_h=cl_hep_l_h,
+            cl_renal_l_h=cl_renal_l_h,
+            mw=mw,
+            fup=fup,
+            bp=1.0,
+            admet=admet,
+            fa=fa,
+            include_pathway=include_pathway,
+            sc_im_ka_per_h=sc_im_ka_per_h,
+            cl_sec_l_h=cl_sec_l_h,
+            cl_bil_l_h=cl_bil_l_h,
+            bile_emptying_1h=bile_emptying_1h,
+            hepatic_vmax_mg_h=hepatic_vmax_mg_h,
+            hepatic_km_mg_l=hepatic_km_mg_l,
+            cyp_terms=cyp_terms,
+            target_binding=target_binding,
+            gut_extraction_eg=gut_extraction_eg,
+            skin_layers=skin_layers,
+            beta_block_ic50_nm=beta_block_ic50_nm,
+            dili_immune_ic50_nm=dili_immune_ic50_nm,
+            dili_immune_weight=dili_immune_weight,
+            measurements=measurements,
+            empirical=empirical,
+        )
     )
 
 
 __all__ = [
+    "EmpiricalObservations",
     "ExposureProfile",
+    "Measurements",
     "OrganStage",
+    "RealismError",
     "RunResult",
     "RunSpec",
     "benchmark_data",
     "benchmark_names",
+    "fidelity_provenance",
     "run_pipeline",
     "spec_from_benchmark_data",
     "summarize_clinical_cardiac",

@@ -1,12 +1,13 @@
 """Per-isoform CYP saturable hepatic kinetics (L2, doc/08 doc/05 1.4/4.1).
 
 The per-CYP Michaelis-Menten/Hill hepatic term (``PBPKModel.cyp_terms``,
-off by default) replaces the lumped linear ``cl_hep`` with the sum of
+model-layer default-off;
+auto-engaged by the pipeline in full fidelity) replaces the lumped linear
+``cl_hep`` with the sum of
 isoform fluxes on the *unbound* liver concentration.  The abundance-scaled
 Vmax is built from the physiology CYP-abundance table
 (``HumanPhysiology.hepatic_cyp_content_nmol``, Barter et al. 2013) via
-``cyp_vmax_mg_h``, so the resource the stage was deferred on is now the
-actual input.
+``cyp_vmax_mg_h``, so the resource the stage had asked for is now the actual input.
 
 Checks pin, in a kp=1 single pool:
 

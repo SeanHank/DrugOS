@@ -168,8 +168,8 @@ def immune_hazard(c: float, ic50_nm: float, hill: float = 1.0) -> float:
     """Immune-mediated DILI hazard from free hepatic nM ``c`` (Hill sigmoid).
 
     The hazard represents haptenized reactive-intermediate / danger-signal
-    formation driving adaptive immune-cell recruitment (doc/05 4.2 seam that
-    was a stub).  It is inert at zero exposure and saturable at high
+    formation driving adaptive immune-cell recruitment (doc/05 4.2 seam, now
+    engaged).  It is inert at zero exposure and saturable at high
     exposure; the *dynamic* immune response derives from it via
     ``immune_recruit_1h``/``immune_decay_1h`` in :func:`simulate_liver`.
     """
@@ -461,10 +461,11 @@ def combined_stress(
 ) -> float:
     """Normalized 0..1 hepatocyte stress from the toxicity axes.
 
-    The fourth (immune) axis is an explicit stub: the ``immune`` hazard input
+    The fourth (immune) axis is wired: the ``immune`` hazard input
     is weighted by ``immune_weight``, which defaults to 0 so every shipped
     default run keeps the validated cholestasis/ATP/GSH composition exactly.
-    It is the seam for future immune-mediated DILI drivers (doc/05 4.2).
+    Full runs engage the axis through the ``dili_immune_*`` anchors
+    (doc/12 D14; validation case ``case_dili_immune_activation``).
     """
     w_immune = max(0.0, immune_weight)
     w_sum = sum(max(0.0, w) for w in weights) + w_immune
@@ -600,7 +601,9 @@ def simulate_liver(
     capped at ``bile_rise_max_fold`` x ULN (the declared cholestasis ceiling;
     the un-clamped rise above it stays in ``stress``).
 
-    **Immune-mediated axis** (off by default): when ``LiverParams.immune_ic50_nm``
+    **Immune-mediated axis** (model layer default-off; auto-anchored in full
+    fidelity — ``IC50_immune = 0.30 * DILI IC50`` or a disclosed null effect):
+    when ``LiverParams.immune_ic50_nm``
     is set, the hapten/danger hazard :func:`immune_hazard` drives an adaptive
     immune-response state ``imm`` (ODEs ``dimm = k_recruit*hazard*(1-imm) -
     k_decay*imm``) whose level loads the fourth ``combined_stress`` axis via

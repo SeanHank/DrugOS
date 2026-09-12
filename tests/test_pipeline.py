@@ -82,6 +82,10 @@ def test_run_spec_validation() -> None:
         replace(good, fa=2.0)
     with pytest.raises(ValueError):
         replace(good, fa=0.0)
+    with pytest.raises(ValueError):
+        replace(good, fidelity="oops")
+    with pytest.raises(ValueError):
+        replace(good, si_segments=0)
     assert replace(good, fa=0.9).fa == pytest.approx(0.9)
 
 
@@ -275,9 +279,11 @@ def test_feedback_loop_wiring_applies_injury_scaling(
     feedback = captured["feedback"]
     assert feedback is not None
     assert 0.0 < feedback.hepatic_cl_scale < 1.0
-    # Apap doesn't perturb the cardiac panels, so the cardiac-output feedback is
-    # neutral even though the loop now derives it from the simulated CO.
-    assert feedback.co_scale == pytest.approx(1.0)
+    # Under full fidelity the mitochondrial/immune/pathway axes of a high-dose
+    # APAP run legitimately perturb the simulated cardiac output, so the
+    # cardiac-output feedback is now depressed below unity (it was neutral in
+    # the linear baseline, where no mitochondrial TMDD or immune load existed).
+    assert 0.0 < feedback.co_scale < 1.0
 
 
 def test_pipeline_cns_structural_line_gated_by_anchoring(fast_warfarin: RunSpec) -> None:
@@ -487,10 +493,10 @@ def test_organ_feedback_co_fraction_tracks_cardiac_output(fast_warfarin: RunSpec
     halved = pl._organ_feedback(model, liver, kidney, _replace(cardiac, co_l_min=0.5 * ref_co))
     assert halved.co_scale == pytest.approx(0.5)
     # Zero-reference cardiac output guard stays neutral instead of NaN.
-    stub_model = SimpleNamespace(
+    probe_model = SimpleNamespace(
         physiology=SimpleNamespace(cardiac_output_ml_min=0.0, gfr_ml_min=phy.gfr_ml_min)
     )
-    guard = pl._organ_feedback(stub_model, liver, kidney, _replace(cardiac, co_l_min=99.0))
+    guard = pl._organ_feedback(probe_model, liver, kidney, _replace(cardiac, co_l_min=99.0))
     assert guard.co_scale == pytest.approx(1.0)
 
 
@@ -643,8 +649,23 @@ def test_spec_from_admet_builds_full_chain_input() -> None:
 def test_run_spec_stage1_realism_wiring(fast_warfarin: RunSpec) -> None:
     # The pipeline threads the optional Stage-1 realism terms from the spec
     # into the PBPK model: gut-wall extraction lowers reported oral F, and
-    # tubular secretion raises the urinary recovery.
-    base = replace(fast_warfarin, include_pathway=False, feedback_loop=0, tmax_h=48.0)
+    # tubular secretion raises the urinary recovery.  Zero the other engaged
+    # full-fidelity terms so the two wirings below are observed in isolation
+    # (fidelity baseline keeps the gate from vetoing the zeroed terms).
+    base = replace(
+        fast_warfarin,
+        include_pathway=False,
+        feedback_loop=0,
+        tmax_h=48.0,
+        fidelity="baseline",
+        cl_bil_l_h=0.0,
+        hepatic_vmax_mg_h=None,
+        hepatic_km_mg_l=None,
+        cyp_terms=(),
+        target_binding=(),
+        si_segments=None,
+        gut_extraction_eg=0.0,
+    )
     plain = replace(base, gut_extraction_eg=0.0, cl_sec_l_h=0.0)
     eg = replace(base, gut_extraction_eg=0.5)
     sec = replace(base, cl_sec_l_h=5.0)
@@ -664,7 +685,7 @@ def test_run_spec_rejects_bad_stage1_params(fast_warfarin: RunSpec) -> None:
     with pytest.raises(ValueError):
         replace(fast_warfarin, cl_sec_l_h=-1.0)
     with pytest.raises(ValueError):
-        replace(fast_warfarin, hepatic_vmax_mg_h=5.0)  # km missing
+        replace(fast_warfarin, hepatic_vmax_mg_h=5.0, hepatic_km_mg_l=None)  # km missing
     with pytest.raises(ValueError):
         replace(fast_warfarin, hepatic_km_mg_l=0.0)
     with pytest.raises(ValueError):
@@ -684,7 +705,8 @@ def test_run_spec_rejects_bad_stage1_params(fast_warfarin: RunSpec) -> None:
 
 def test_panel_model_wires_cyp_terms(fast_warfarin: RunSpec) -> None:
     terms = (CypTerm(isoform="CYP3A4", km_mg_l=1.0, vmax_mg_h=7.8),)
-    spec = replace(fast_warfarin, cyp_terms=terms)
+    # Clear the auto-anchored lumped MM pair before switching to per-CYP terms.
+    spec = replace(fast_warfarin, hepatic_vmax_mg_h=None, hepatic_km_mg_l=None, cyp_terms=terms)
     assert pl._panel_model(spec).cyp_terms == terms
     with pytest.raises(ValueError):
         replace(fast_warfarin, gut_extraction_eg=1.0)
@@ -704,6 +726,7 @@ def test_panel_model_wires_target_binding(fast_warfarin: RunSpec) -> None:
         target_binding=(TargetBinding(tissue="gut", target=target),),
         include_pathway=False,
         feedback_loop=0,
+        fidelity="baseline",
     )
     panel = pl._panel_model(spec)
     assert panel.target_binding == spec.target_binding
@@ -723,6 +746,7 @@ def test_panel_model_wires_skin_layers(fast_warfarin: RunSpec) -> None:
         skin_layers=SkinLayers(sc_thickness_um=20.0),
         include_pathway=False,
         feedback_loop=0,
+        fidelity="baseline",
         dose_plan=build_dose_plan(route="transdermal", amount_mg=10.0, interval_h=0.0, n_doses=1),
     )
     panel = pl._panel_model(spec)
@@ -751,7 +775,7 @@ def test_cardiac_tone_scale_clamps_and_neutral_below_baseline() -> None:
 def test_beta_block_ic50_wires_sympathetic_tone_and_hemodynamics(
     fast_warfarin: RunSpec,
 ) -> None:
-    base = run_pipeline(replace(fast_warfarin, beta_block_ic50_nm=None))
+    base = run_pipeline(replace(fast_warfarin, beta_block_ic50_nm=None, fidelity="baseline"))
     hard = run_pipeline(replace(fast_warfarin, beta_block_ic50_nm=0.01))
     soft = run_pipeline(replace(fast_warfarin, beta_block_ic50_nm=1000.0))
     assert base.exposure.beta_block_ic50_nm is None
@@ -819,3 +843,113 @@ def _report(risk: float) -> ToxicityReport:
         evidence=(ev,),
     )
     return ToxicityReport(risks=(r,))
+
+
+def test_available_realism_terms_and_degraded_branches(fast_warfarin: RunSpec) -> None:
+    engaged = fast_warfarin
+    missing = replace(engaged, hepatic_vmax_mg_h=None, hepatic_km_mg_l=None)
+    available = pl._available_realism_terms(missing)
+    assert set(available) == set(pl._available_realism_terms(engaged)) | {
+        "saturable (Michaelis-Menten) hepatic clearance"
+    }
+    guard = pl._degraded_realism_terms(missing)
+    assert guard and "guardrail" in guard[0]
+    assert pl._degraded_realism_terms(engaged) == []
+    baseline_full_hep = replace(engaged, fidelity="baseline")
+    assert pl._degraded_realism_terms(baseline_full_hep) == []
+    baseline_off = pl._degraded_realism_terms(replace(missing, fidelity="baseline"))
+    assert any("explicit fidelity='baseline' opt-out" in item for item in baseline_off)
+
+
+def test_full_fidelity_engaged_spec_is_stable(fast_warfarin: RunSpec) -> None:
+    engaged = fast_warfarin
+    out = pl._engage_full_fidelity(engaged)
+    assert out.feedback_loop == 1
+    assert out.si_segments == engaged.si_segments
+    assert out.dili_immune_ic50_nm == engaged.dili_immune_ic50_nm
+    assert out.beta_block_ic50_nm == engaged.beta_block_ic50_nm
+    assert out.target_binding == engaged.target_binding
+    baseline = replace(engaged, fidelity="baseline")
+    assert pl._engage_full_fidelity(baseline) is baseline
+
+
+def test_full_fidelity_immune_weight_already_set(fast_warfarin: RunSpec) -> None:
+    primed = replace(fast_warfarin, dili_immune_ic50_nm=None, dili_immune_weight=0.5)
+    out = pl._engage_full_fidelity(primed)
+    assert out.dili_immune_weight == 0.5
+    assert out.dili_immune_ic50_nm is not None
+
+
+def test_full_fidelity_sc_im_and_transdermal_wiring(fast_warfarin: RunSpec) -> None:
+    from drugos.inputs.parse_dosing import build_dose_plan
+
+    dose = fast_warfarin.dose_plan.total_dose_mg
+    subcut = replace(
+        fast_warfarin,
+        dose_plan=build_dose_plan("subcutaneous", dose),
+        sc_im_ka_per_h=None,
+    )
+    sc_ok = pl._engage_full_fidelity(subcut)
+    assert sc_ok.sc_im_ka_per_h is not None
+    transdermal = replace(
+        fast_warfarin,
+        dose_plan=build_dose_plan("transdermal", dose),
+        skin_layers=None,
+    )
+    trans_ok = pl._engage_full_fidelity(transdermal)
+    assert trans_ok.skin_layers is not None
+
+
+def test_assert_full_fidelity_raises_when_missing(fast_warfarin: RunSpec) -> None:
+    missing = replace(fast_warfarin, hepatic_vmax_mg_h=None, hepatic_km_mg_l=None)
+    with pytest.raises(pl.RealismError):
+        pl._assert_full_fidelity(missing)
+    pl._assert_full_fidelity(replace(missing, fidelity="baseline"))
+
+
+def test_spec_from_admet_rejects_unusable_mw(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+
+    from drugos.inputs.models import HumanProfile, Sex
+    from drugos.inputs.parse_dosing import build_dose_plan
+
+    monkeypatch.setattr(pl, "parse_structure", lambda *a, **k: SimpleNamespace(mw=None))
+    mol = SimpleNamespace(name="empty", canonical_smiles=None, smiles=None, mw=None)
+    profile = HumanProfile(sex=Sex.MALE, age_y=40, height_cm=170, weight_kg=70)
+    with pytest.raises(ValueError, match="molecular weight"):
+        pl.spec_from_admet(mol, None, profile, build_dose_plan("oral", 500.0))
+
+
+def test_full_fidelity_uses_admet_heads_and_discloses_them() -> None:
+    from drugos.inputs.models import HumanProfile, Sex
+    from drugos.inputs.parse_dosing import build_dose_plan
+    from drugos.inputs.parse_structure import parse_structure
+    from drugos.pk.admet import AdmetOutput
+
+    mol = parse_structure("CC(=O)Nc1ccc(O)cc1", name="admet-heads")
+    profile = HumanProfile(sex=Sex.MALE, age_y=40, height_cm=170, weight_kg=70)
+    plan = build_dose_plan("oral", 500.0)
+
+    def build(heads: dict[str, float]) -> RunSpec:
+        admet = AdmetOutput(
+            smiles=mol.canonical_smiles,
+            fup_plasma=0.6,
+            cl_int_hep_ml_min_kg=12.0,
+            HIA=0.8,
+            log_s=-3.0,
+            **heads,
+        )
+        return pl.spec_from_admet(mol, admet, profile, plan)
+
+    lipophilic = build(dict(hERG=0.35, BBB=0.9, Pgp=0.7, log_p_pred=2.5, cyp3a4_inhibitor=0.8))
+    assert lipophilic.cl_sec_l_h > 1e-4  # P-gp head present, not the 0.5 neutral prior
+    assert lipophilic.cl_bil_l_h > 1e-4  # high-logP biliary fraction engaged
+    assert lipophilic.gut_extraction_eg > 0.0  # CYP3A4 head present, not the 0.5 prior
+    result = run_pipeline(lipophilic)
+    trust = result.to_contract()["trust"]
+    assert any("BBB_Martins" in a for a in trust["anchors_wired"])
+    assert any("hERG" in a for a in trust["anchors_wired"])
+    assert "hERG" in trust["admet_ml_estimates"] and "BBB" in trust["admet_ml_estimates"]
+
+    hydrophilic = build(dict(log_p_pred=1.0))
+    assert hydrophilic.cl_bil_l_h > 1e-4  # low-logP biliary fraction engaged

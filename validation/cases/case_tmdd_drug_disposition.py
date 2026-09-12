@@ -1,9 +1,10 @@
 """Native target-mediated drug disposition coupling (L2, doc/08, doc/05 1.4/2.4).
 
 The sequential pipeline only *approximates* TMDD via the opt-in
-``feedback_loop`` driver; the deferred item asked for true mass-balance
+``feedback_loop`` driver; an earlier roadmap item asked for true mass-balance
 coupling so Stage-2 occupancy fluxes feed back into the tissue ODEs.  That is
-now ``PBPKModel.target_binding`` (off by default): one reversible binding site
+now ``PBPKModel.target_binding`` (model-layer default-off; the pipeline
+auto-engages it in full fidelity): one reversible binding site
 is coupled straight into a tissue mass balance with the regulatorily standard
 turnover model of ``drugos.target.occupancy`` — second-order association
 ``kon*D*R``, first-order dissociation ``koff*DR`` (``koff = kon*kd`` on the

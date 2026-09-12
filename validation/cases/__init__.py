@@ -40,6 +40,7 @@ from validation.cases.case_corpus_calibration import case_corpus_calibration
 from validation.cases.case_cyp_kinetics import case_cyp_kinetics
 from validation.cases.case_dili_immune_activation import case_dili_immune_activation
 from validation.cases.case_dose_proportionality import case_dose_proportionality
+from validation.cases.case_full_chain_admet_to_report import case_full_chain_admet_to_report
 from validation.cases.case_herg_calibration import case_herg_calibration
 from validation.cases.case_kidney_gfr import case_kidney_gfr
 from validation.cases.case_liver_cholestasis_pbk import case_liver_cholestasis_pbk
@@ -48,6 +49,7 @@ from validation.cases.case_mass_balance import case_mass_balance
 from validation.cases.case_occupancy_equilibrium import case_occupancy_equilibrium
 from validation.cases.case_pathway_amplification import case_pathway_amplification
 from validation.cases.case_pathway_organ_coupling import case_pathway_organ_coupling
+from validation.cases.case_predictive_regime import case_predictive_regime
 from validation.cases.case_prospective_fidelity import case_prospective_fidelity
 from validation.cases.case_r_bridge import case_r_bridge
 from validation.cases.case_risk_ordering import case_risk_ordering
@@ -87,9 +89,11 @@ _ANALYTIC_CASES: tuple[Callable[[], CaseResult], ...] = (
     case_cyp_kinetics,
     case_dili_immune_activation,
     case_acat_multisegment_si,
+    case_full_chain_admet_to_report,
     case_tmdd_drug_disposition,
     case_transdermal_multi_layer,
     case_cardiac_sympathetic_suppression,
+    case_predictive_regime,
 )
 
 _Step = tuple[Callable[..., CaseResult], tuple[Any, ...]]

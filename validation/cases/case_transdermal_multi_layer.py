@@ -1,8 +1,9 @@
 """Finite-dose multi-layer skin permeation for transdermal (L2, doc/05 1.4).
 
-Transdermal was a generic first-order ``depot``; the deferred item asked for a
-real multi-layer skin-permeation membrane.  That is now
-``PBPKModel.absorption.skin_layers`` (``SkinLayers``, off by default): four
+Transdermal was a generic first-order ``depot``; an earlier roadmap item asked
+for a real multi-layer skin-permeation membrane.  That is now
+``PBPKModel.absorption.skin_layers`` (``SkinLayers``, model-layer
+default-off; auto-engaged by the pipeline in full fidelity): four
 reversible, diffusion-limited compartments surface -> stratum corneum (SC) ->
 viable epidermis (VE) -> dermis, with first-order dermal capillary removal
 into venous blood:
@@ -21,7 +22,8 @@ The checks pin, on a kp=1 single pool:
 - the membrane is a genuine barrier: a 10x thicker stratum corneum retains a
   large fraction of a 6 h finite dose, and a 10x higher SC diffusivity faster
   systemic absorption at 1 h;
-- the extension is off by default (transdermal then uses the depot) and a
+- the extension is model-layer default-off (transdermal then uses the
+  depot) and a
   degenerate (zero-area) membrane is rejected.
 """
 

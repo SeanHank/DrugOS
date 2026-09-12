@@ -1,9 +1,11 @@
 """Coverage for the release tooling in ``scripts/release.py``.
 
-The fallback audit (G5) is itself a gate: these tests pin the AST detector so
-that a regression in the tooling cannot silently re-allow a swallow handler.
-The tool is driven on the real package (must match the pinned allowlist) and on
-tiny synthetic trees so the detector's judgment is asserted directly.
+The fallback audit (G5) and the marker audit (G6) are themselves gates: these
+tests pin the AST/grepper detectors so a regression in the tooling cannot
+silently re-allow a swallowed handler or a retained marker. The tool is driven
+on the real package (G5's handler inventory reconciles; G6's marker audit is
+clean) and on tiny synthetic trees so the detectors' judgment is asserted
+directly.
 """
 
 import ast
@@ -90,14 +92,94 @@ def test_validation_counts_parses_report() -> None:
     assert 0 <= passed <= total
 
 
-def test_next_version_modes() -> None:
-    today = type("D", (), {"year": 2026, "month": 9})()
-    assert release.next_version("2026.9.0", "none", today) == "2026.9.0"
-    assert release.next_version("2026.9.0", "auto", today) == "2026.9.1"
-    assert release.next_version("2026.8.0", "auto", today) == "2026.9.0"
-    assert release.next_version("2026.8.3", "revision", today) == "2026.8.4"
-    assert release.next_version("2026.8.3", "month", today) == "2026.9.0"
-    assert release.next_version("2026.8.3", "year", today) == "2026.0.0"
+def test_release_requires_explicit_version() -> None:
+    # No auto-bump: the release command must be told exactly which version.
+    with pytest.raises(SystemExit):
+        release.main(["release", "--no-gates"])
+
+
+def test_release_rejects_malformed_version() -> None:
+    with pytest.raises(SystemExit):
+        release.main(["release", "--version", "x.y.z", "--no-gates"])
+
+
+def test_release_accepts_wellformed_version() -> None:
+    # A well-formed --version passes the format guard; the gate path is what
+    # the release command drives next (exercised by the integration gates).
+    assert (
+        release.cmd_release(
+            type(
+                "A",
+                (),
+                {
+                    "version": "2026.9.1",
+                    "dry_run": True,
+                    "no_gates": True,
+                    "no_sync": True,
+                    "no_xdist": True,
+                },
+            )()
+        )
+        == 0
+    )
+
+
+def test_hard_marker_pattern_detects_markers() -> None:
+    # Marker literals are assembled from fragments so this detector test does
+    # not itself trip the very markers it is pinning.
+    f_todo = "T" + "ODO"
+    f_nie = "Not" + "Implemented" + "Error"
+    f_unim = "unim" + "plemented"
+    f_nimp = "not im" + "plemented"
+    assert release.HARD_MARKER_PATTERN.search(f"# {f_todo} wire this") is not None
+    assert release.HARD_MARKER_PATTERN.search(f"raise {f_nie}") is not None
+    assert release.HARD_MARKER_PATTERN.search(f"{f_unim} lane") is not None
+    assert release.HARD_MARKER_PATTERN.search(f_nimp) is not None
+    assert release.HARD_MARKER_PATTERN.search("an honest measurement") is None
+
+
+def test_marker_tokens_in_covers_full_set() -> None:
+    # Every scanned file, code and docs alike, is checked against the full
+    # marker set; the audit keeps no allowance file and no whitelist.
+    f_def = "defe" + "rred"
+    assert release.marker_tokens_in(f_def + " until the next phase") == [f_def]
+    f_todo = "TO" + "DO"
+    f_nie = "Not" + "Implemented" + "Error"
+    assert release.marker_tokens_in(f"# {f_todo} later") == [f_todo]
+    assert release.marker_tokens_in(f_nie) == [f_nie]
+    assert release.marker_tokens_in("plain prose") == []
+
+
+def test_no_deferral_audit_real_scope_clean() -> None:
+    violations = release.no_deferral_audit()
+    assert violations == [], "\n".join(violations)
+
+
+def test_marker_tokens_in_catches_inflections() -> None:
+    # Marker literals are assembled from fragments so this detector test does
+    # not itself trip the very markers it is pinning.
+    f_stub = "s" + "tub"
+    f_simpl = "simplif" + "ication"
+    f_deferral = "defer" + "ral"
+    f_catalog = "cata" + "log"
+    hits = release.marker_tokens_in(f"those {f_stub}s, their {f_simpl}s, {f_deferral}s")
+    assert f_stub in hits and f_simpl in hits and f_deferral in hits
+    assert release.marker_tokens_in(f"a {f_catalog}ed americanized entry") == [f_catalog]
+    assert release.marker_tokens_in("this work is real") == []
+
+
+def test_marker_tokens_in_recognizes_g2_typing_path() -> None:
+    # ``stubs/`` is the committed G2 typing-declarations directory (a realized
+    # artifact); its literal path must not be misread as the marker word.
+    f_stub = "s" + "tub"
+    f_ph = "place" + "holder"
+    for line in (
+        f"typed by ``{f_stub}s/libsbml/__init__.pyi`` (doc/06, G2)",
+        f"the typing packages under `{f_stub}s/` cover the untyped wheel",
+        f"consumed subset typed by ``{f_stub}s/rpy2/robjects.pyi``",
+    ):
+        assert release.marker_tokens_in(line) == [], line
+    assert release.marker_tokens_in(f"a {f_stub}bed-out {f_ph} remains") != []
 
 
 def test_gate_log_has_header_and_passed_marker(
@@ -108,6 +190,7 @@ def test_gate_log_has_header_and_passed_marker(
     monkeypatch.setattr(release, "ensure_versions_consistent", lambda: None)
     monkeypatch.setattr(release, "verify_data_checksums", lambda: None)
     monkeypatch.setattr(release, "fallback_audit", lambda: [])
+    monkeypatch.setattr(release, "no_deferral_audit", lambda: [])
     commands: list[list[str]] = []
 
     def fake_run_cmd(log_path: Path, label: str, cmd: Sequence[str], **_kwargs: object) -> int:
@@ -124,6 +207,7 @@ def test_gate_log_has_header_and_passed_marker(
     assert "== G1 lint (ruff check) ==" in text
     assert "G4 validation suite" in text
     assert "fallback audit: clean" in text
+    assert "marker audit: clean" in text
     assert text.endswith("ALL GATES PASSED\n")
     g3 = next(c for c in commands if len(c) >= 3 and c[2] == "pytest")
     assert g3 == [release.python(), "-m", "pytest"]
@@ -135,6 +219,7 @@ def test_run_gates_uses_xdist_when_enabled(tmp_path: Path, monkeypatch: pytest.M
     monkeypatch.setattr(release, "ensure_versions_consistent", lambda: None)
     monkeypatch.setattr(release, "verify_data_checksums", lambda: None)
     monkeypatch.setattr(release, "fallback_audit", lambda: [])
+    monkeypatch.setattr(release, "no_deferral_audit", lambda: [])
     commands: list[list[str]] = []
     monkeypatch.setattr(
         release,
