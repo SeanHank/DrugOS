@@ -449,12 +449,17 @@ def test_admet_herg_sieve_wires_occupancy_qt_and_cardiac(fast_warfarin: RunSpec)
         replace(nonblocker, admet=AdmetOutput(smiles="C", hERG=0.5))
     ) == pytest.approx(1414.2136)
     # The resolver replaces the hERG site's KD in the panel (occupancy/primary
-    # signal/pathway drive) while leaving every other target untouched.
-    sieved = pl._herg_sieved_panel(nonblocker)
-    assert all(t.kd_nm == pytest.approx(269217.32) for t in sieved if "hERG" in t.name)
-    assert sum(1 for t in sieved if "hERG" in t.name) == sum(
+    # signal/pathway drive) while leaving every other target untouched and
+    # reporting the residual disclosed priors on the final panel.
+    resolved, no_data = pl._resolve_panel(nonblocker)
+    assert all(t.kd_nm == pytest.approx(269217.32) for t in resolved if "hERG" in t.name)
+    assert sum(1 for t in resolved if "hERG" in t.name) == sum(
         1 for t in nonblocker.panel if "hERG" in t.name
     )
+    assert not next(
+        t for t in resolved if "hERG" in t.name
+    ).low_confidence  # a bound anchor, not a disclosed prior
+    assert "hERG (Kv11.1)" not in no_data
     # A predicted non-blocker loses its QT bite; a predicted blocker keeps it.
     r_nb = run_pipeline(nonblocker)
     r_b = run_pipeline(blocker)

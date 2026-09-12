@@ -121,7 +121,7 @@ def case_full_chain_admet_to_report() -> CaseResult:
         for c in data.values()
     )
     g5_ok = all("G5" in c["contract"]["trust"]["policy"] for c in data.values())
-    priors_ok = all(len(c["contract"]["trust"]["class_prior_sites"]) >= 1 for c in data.values())
+    priors_ok = all(len(c["contract"]["trust"]["no_public_data_sites"]) >= 1 for c in data.values())
     terms_ok = all(c["contract"]["trust"]["mechanism_terms_engaged"] != [] for c in data.values())
     no_seams_ok = all(not [k for k in c["contract"]["trust"] if "seam" in k] for c in data.values())
     bbb_wired = any("BBB" in a for a in data[caff_smiles]["contract"]["trust"]["anchors_wired"])
@@ -199,7 +199,7 @@ def case_full_chain_admet_to_report() -> CaseResult:
         MetricResult(
             "class_priors_disclosed",
             float(
-                sum(len(c["contract"]["trust"]["class_prior_sites"]) >= 1 for c in data.values())
+                sum(len(c["contract"]["trust"]["no_public_data_sites"]) >= 1 for c in data.values())
             ),
             float(len(data)),
             float(len(data)),

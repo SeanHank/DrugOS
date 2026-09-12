@@ -90,6 +90,7 @@ def _rebind(
     name: str,
     kd_nm: float,
     reference: str,
+    low_confidence: bool = True,
 ) -> tuple[Target, ...]:
     out: list[Target] = []
     for t in targets:
@@ -104,7 +105,7 @@ def _rebind(
                 r0_nm=t.r0_nm,
                 rho_h=t.rho_h,
                 kint_h=t.kint_h,
-                low_confidence=True,
+                low_confidence=low_confidence,
                 reference=reference,
             )
         )
@@ -154,9 +155,15 @@ def bind_site(
     name: str,
     kd_nm: float,
     reference: str,
+    low_confidence: bool = True,
 ) -> tuple[Target, ...]:
-    """Rebind one named site to ``kd_nm`` everywhere it appears."""
-    return _rebind(targets, name, kd_nm, reference)
+    """Rebind one named site to ``kd_nm`` everywhere it appears.
+
+    ``low_confidence`` defaults to ``True`` (a surrogate or class estimate);
+    pass ``low_confidence=False`` for an absolute measured override so the
+    trust record does not disclose a measured anchor as a class prior.
+    """
+    return _rebind(targets, name, kd_nm, reference, low_confidence)
 
 
 __all__ = [

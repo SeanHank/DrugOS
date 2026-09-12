@@ -19,7 +19,7 @@ locally by `scripts/release.py gates` (the merged successor of the former
 | G3 | `pytest` + `coverage` | 100 % branch coverage of `src/drugos`; `fail_under = 100`. GitHub CI runs **base pytest only** (`python scripts/release.py gates --no-xdist`); local runs may add `-n auto` (pytest-xdist) for speed |
 | G4 | validation suite | `validation/` runs end-to-end, every case must **pass**, and `validation/report.md` must be regenerated cleanly |
 | G5 | fallback audit | every `except` handler in `src/drugos` must surface an explicit error; the handler inventory is pinned in `scripts/fallback_allowlist.json` and any drift or silent swallow fails the release |
-| G6 | marker audit | code and docs carry no marker of a stand-in yet to be realized: any occurrence of the audited marker set at any count in any audited file is a release-blocking violation, with no allowance file, no whitelist and no pinned inventory |
+| G6 | marker audit | code and docs carry no marker of a stand-in: any occurrence of the audited marker set at any count in any audited file is a release-blocking violation, with no allowance file, no whitelist and no pinned inventory |
 
 ### G1 — Lint and Format
 
@@ -180,7 +180,7 @@ A release (`2026.*`) requires:
 4. the parameter manifest / data checksums documented and pinned;
 5. no silent fallbacks anywhere in `src/drugos` (the fallback audit is clean and
    the allowlist matches the code);
-6. no marker of a stand-in yet to be realized in any audited code or doc file
+6. no marker of a stand-in in any audited code or doc file
    (the marker audit is clean; there is no allowance file, no whitelist and
    nothing is pinned).
 
@@ -190,11 +190,11 @@ A release (`2026.*`) requires:
 > the gate) — do not edit by hand.
 
 - Version: **2026.9.1**
-- Validation: **PASS (38/38 cases)**
+- Validation: **PASS (45/45 cases)**
 - G1 lint (ruff): PASS
 - G2 types (mypy --strict): PASS
 - G3 coverage (100 % branch of `src/drugos`): PASS
 - G4 validation suite: PASS
 - G5 fallback audit: PASS
 - G6 marker audit: PASS
-- Last release run: 2026-09-12 04:49 UTC
+- Last release run: 2026-09-12 10:57 UTC

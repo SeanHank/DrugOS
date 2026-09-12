@@ -125,13 +125,25 @@ def test_pipeline_effective_herg_branches() -> None:
     no_herg = replace(base, panel=(Target(name="sodium channel", kd_nm=5.0e4),))
     spec = replace(no_herg, admet=AdmetOutput(smiles="CN", hERG=0.9))
     assert pl._effective_herg_kd_nm(spec) is None
-    assert pl._herg_sieved_panel(spec) == spec.panel
+    assert pl._resolve_panel(spec)[0] == spec.panel
+
+
+def test_pipeline_effective_cns_branches() -> None:
+    from drugos.inputs.models import Molecule
+
+    base = replace(_warfarin(), cns_ic50_nm=None)
+    # No molecule -> no structure-derived anchor.
+    assert pl._resolved_cns_ic50_nm(replace(base, molecule=None)) is None
+    # Molecule without a canonical SMILES -> same None seam.
+    assert pl._resolved_cns_ic50_nm(replace(base, molecule=Molecule(canonical_smiles=""))) is None
+    # An explicit anchor is absolute.
+    assert pl._resolved_cns_ic50_nm(replace(base, cns_ic50_nm=7.5e3)) == pytest.approx(7.5e3)
 
 
 def test_pipeline_sieved_panel_no_override_binds_prior() -> None:
     base = replace(_warfarin(), qt_ic50_nm=None)
-    sieved = pl._herg_sieved_panel(base)
-    assert next(t.kd_nm for t in sieved if "hERG" in t.name) == pytest.approx(2.0)
+    resolved, no_data = pl._resolve_panel(base)
+    assert next(t.kd_nm for t in resolved if "hERG" in t.name) == pytest.approx(2.0)
 
 
 def test_bind_site() -> None:

@@ -130,9 +130,9 @@ term.
 ### 1.6 Baseline Implementation Scope (2026.9.1)
 
 The shipped engine implements a faithful *baseline* of the mechanics above.
-The baseline's narrower span, itemized in doc/01 §5 (out of scope for the
-2026.9.1 baseline; each reduction is a documented default, never a hidden
-stand-in), is:
+The baseline's narrower span is a documented design boundary of the 2026.9.1
+baseline (itemized in doc/01 §5); each reduction is a documented default,
+never a hidden stand-in:
 
 - **Clearance** defaults to a lumped single hepatic-metabolic `cl_hep` (from
   the resolved physiology and structure-derived partition) plus renal GFR of
@@ -216,19 +216,22 @@ Given free drug concentrations at target sites, predict fractional target occupa
 ### 2.2 Step 2A: Target Identification
 
 - **Approved/reference drugs:** DrugBank targets for the given drug (if present in DB) — primary targets + known off-targets (hERG, CYP enzymes, BSEP, transporters, nuclear receptors).
-- **Novel molecules:** DTI/DTA machine learning (sequence-based AttentionDTA/MINDG-style or structure-based when a structure is available) ranks candidate targets from the safety-critical panel and mechanism hypotheses.
+- **Novel molecules:** DTI/DTA machine learning (sequence-based AttentionDTA/MINDG-style or structure-based when a structure is available) scores the safety-critical panel and mechanism-hypothesis sites; the shipped ChEMBL kNN resolver (`drugos.target.dti`) re-binds chemotype-supported sites to structure-derived KD under the `MIN_NEIGHBOR_TANIMOTO` evidence gate (doc/12 row 2b, D10), while unsupported sites keep their disclosed class priors.
 - **Recommended default off-target safety panel** (baseline 2026.9.1): hERG (Kv11.1), CYP3A4/2D6/2C9 (inhibition), BSEP, MRP3/MRP4, OATP1B1, P-glycoprotein, mitochondrial complex I/II/III/IV/MCT, and the glucocorticoid/sex-hormone receptors (endocrine effects).
-- **Baseline scope (2026.9.1).** The shipped engine resolves targets for built-in
-  benchmark compounds only and defaults to the off-target safety panel with
-  class-typical IC50 priors; the DrugBank resolution kernel and the DTI/DTA-ML
-  target ranker for novel molecules are planned for later releases (doc/01 §5).
+- **Baseline scope (2026.9.1).** The shipped engine resolves the off-target
+  safety panel for every run — benchmark and novel molecule alike — through
+  the corpus-calibrated head lanes (R-8), the ChEMBL kNN resolver under the
+  `MIN_NEIGHBOR_TANIMOTO` evidence gate (doc/12 row 2b, D10), and
+  class-typical IC50 priors for the sites without structure support, named in
+  `no_public_data_sites` (doc/01 §5).
 - **Provenance disclosure (2026.9.1).** Every contract carries a machine-readable
   `trust` record (`fidelity_provenance`, doc/12 §7): the wired production
-  anchors (R-4/R-6/R-7/R-8 as applicable), the engaged vs off-but-available
-  realism terms, the class-prior target sites, the ADMET-AI heads that actually
-  contributed, and the set of planned release tracks (P5–P9) — so the resolution
-  path used for *this* molecule (measured / re-scored head / class prior) is
-  auditable in the report. The end-to-end case
+  anchors (R-4/R-6/R-7/R-8 as applicable), the realism terms engaged in this
+  run, the class-prior target sites (`no_public_data_sites`), the ADMET-AI
+  heads that actually contributed (`admet_ml_estimates`), and the per-term
+  auto-anchor basis (`estimates`) — so the resolution path used for *this*
+  molecule (measured / re-scored head / class prior) is auditable in the
+  report. The end-to-end case
   `case_full_chain_admet_to_report` verifies the full chain per run (doc/08,
   doc/12 §7.2).
 
@@ -254,10 +257,13 @@ Priority order for Kd / kon / koff of drug-target pairs:
 >   (`P=0.5`) landing at the corpus-typical weak potency (~1.4 µM, within 10x of
 >   the hERG Central median IC50 on the conservative side; doc/08 R-8).
 > - *Path A (resolver seam):* the same curve re-binds the Veith CYP2D6/3A4/2C9
->   inhibition heads onto their panel priors; P-gp, the transporters,
->   mitochondrial and endocrine sites — and any primary-target site — stay on
->   class priors until the sequence-DTI resolver (doc/12 §1 row 2b, P5) ships a
->   corpus-calibration + equivalence case under G4/G5.
+>   inhibition heads onto their panel priors, and the shipped ChEMBL kNN
+>   resolver (`drugos.target.dti`) re-binds every mapped panel site with
+>   chemotype support to structure-derived KD under the
+>   `MIN_NEIGHBOR_TANIMOTO` evidence gate (doc/12 row 2b, D10).
+>   P-gp, the transporters, mitochondrial and endocrine sites — and any
+>   primary-target site without support — stay on disclosed class priors,
+>   named in `no_public_data_sites`.
 >
 > The effective KD (resolved KD, or a per-compound `qt_ic50_nm` override)
 > replaces the hERG site in the safety panel once, so Stage-2 occupancy, the
@@ -306,9 +312,7 @@ For each engaged target, assemble the relevant sub-network from KEGG / Reactome 
 > from the in-repo SBML and executed by ``simulate_sbml_pathway``.  A
 > ~12-reaction / ~10-species in-repo DSL compiler is retained as the fast
 > path, but the pipeline default is the SBML cascade (the 20-200-reaction
-> target).  KEGG/Reactome/PANTHER ingestion and larger toxicity-route graphs
-> are planned for later releases (doc/01 §5); the compiler contract and ODE export support
-> them unchanged.
+> target).
 
 ### 3.3 Step 3B: ODE Generation (direct SciPy implementation)
 
@@ -377,11 +381,15 @@ Mechanistic sub-models:
 - **hERG/QT axis**: from hERG blockade fraction (Stage 2 off-target), estimate IKr reduction and a QTc-prolongation model (multiplicative / Emax on hERG channel current; literature QTc-hERG relationships). Maps to torsades-de-pointes risk band.
 - **Inotropy/chronotropy modulators**: beta/catecholamine pathway effects feed into contractility and rate.
 
-> **Implemented (2026.9.1):** `src/drugos/organ/cardiac.py` — `predict_qtc()` Emax hERG->IKr->QTc axis with TdP banding (450/480/500 ms) and a two-compartment Windkessel (`simulate_hemodynamics()`) for MAP/CVP/CO/SV. The hERG blockade fraction is driven by the **PBPK cardiac (heart) free exposure** (`unbound_tissues["heart"]`), not the hepatic one. **Inotropy/chronotropy coupling (pathway→organ):** the Stage-3 ERK/MAPK amplification ratio gates `CardiacParams.inotropy = chronotropy` via `_cardiac_tone_scale()` (damped `gain=0.2`, capped at 1.3×); the ERK proxy encodes only the *stimulatory* branch (ERK1/2 is downstream of beta-adrenergic E-C coupling), so a baseline or suppressed readout keeps tone exactly 1.0 and the loop `co_fraction` stays neutral for benign drugs, while a genuinely amplified readout raises CO/HR. **Sympathetic suppression branch (DEFAULT-ENGAGED in full runs):** `CardiacParams.sympathetic_tone` (1.0 in the baseline lane) realizes the roadmap suppression axis as an explicit, saturable Emax (beta-adrenergic site blockade) via `sympathetic_tone_from_emax()` — `tone = IC50/(IC50 + C_free_heart)`, wired from the PBPK heart free exposure when `RunSpec.beta_block_ic50_nm` is set (a disclosed null-effect anchor is auto-assigned in full runs when absent). The tone multiplies both heart rate and stroke volume, so cardiac output scales with tone²; systemic resistance is pinned to the intact-tone reference output, so a suppression that lowers CO reads out as hypotension (arterial-venous pressure drop falls with tone², `pa - pv = tone²·(MAP_ref − CVP)` in the Windkessel steady state), which feeds the loop `co_fraction` and perfusion scaling. Validated: 0.5 mg dofetilide peak Delta-QTc 20 ms lies in the published prolongation band vs a negligible-hERG control (L3 case); the sympathetic axis is pinned by the IC50-exposure quarters-CO analytic L2 case.
+> **Implemented (2026.9.1):** `src/drugos/organ/cardiac.py` — `predict_qtc()` Emax hERG->IKr->QTc axis with TdP banding (450/480/500 ms) and a two-compartment Windkessel (`simulate_hemodynamics()`) for MAP/CVP/CO/SV. The hERG blockade fraction is driven by the **PBPK cardiac (heart) free exposure** (`unbound_tissues["heart"]`), not the hepatic one. **Inotropy/chronotropy coupling (pathway→organ):** the Stage-3 ERK/MAPK amplification ratio gates `CardiacParams.inotropy = chronotropy` via `_cardiac_tone_scale()` (damped `gain=0.2`, capped at 1.3×); the ERK proxy encodes only the *stimulatory* branch (ERK1/2 is downstream of beta-adrenergic E-C coupling), so a baseline or suppressed readout keeps tone exactly 1.0 and the loop `co_fraction` stays neutral for benign drugs, while a genuinely amplified readout raises CO/HR. **Sympathetic suppression branch (DEFAULT-ENGAGED in full runs):** `CardiacParams.sympathetic_tone` (1.0 in the baseline lane) realizes the sympathetic-suppression axis as an explicit, saturable Emax (beta-adrenergic site blockade) via `sympathetic_tone_from_emax()` — `tone = IC50/(IC50 + C_free_heart)`, wired from the PBPK heart free exposure when `RunSpec.beta_block_ic50_nm` is set (a disclosed null-effect anchor is auto-assigned in full runs when absent). The tone multiplies both heart rate and stroke volume, so cardiac output scales with tone²; systemic resistance is pinned to the intact-tone reference output, so a suppression that lowers CO reads out as hypotension (arterial-venous pressure drop falls with tone², `pa - pv = tone²·(MAP_ref − CVP)` in the Windkessel steady state), which feeds the loop `co_fraction` and perfusion scaling. Validated: 0.5 mg dofetilide peak Delta-QTc 20 ms lies in the published prolongation band vs a negligible-hERG control (L3 case); the sympathetic axis is pinned by the IC50-exposure quarters-CO analytic L2 case.
 
 ### 4.4 Kidney — Nephron + GFR Model
 
-- **Nephron-level model** (Physiome neural-nephron lineage, planned release P7): glomerular filtration, tubular reabsorption/secretion; clearance coupling with Stage 1 renal elimination.
+- **Nephron-level model** (CKD-EPI 2021 race-free GFR baseline, R-6, plus the
+  shipped nephron tubular-transport model `organ.nephron`): glomerular
+  filtration, tubular reabsorption/secretion (proximal reabsorption and
+  transporter-mediated secretion kinetics); clearance coupling with Stage 1
+  renal elimination (doc/12 row 4b, NEPH-L2).
 - **Nephrotoxicity endpoints**: acute kidney injury proxies (GFR decline, tubular injury biomarker (KIM-1 heteromer in practice)) — the baseline keeps serum creatinine + GFR from renal function sub-model.
 
 > **Implemented (2026.9.1):** `src/drugos/organ/kidney.py` — nephron injury sigmoid drives a floored GFR; serum creatinine from the closed-form balance Scr = P/GFR; KDIGO AKI stage from Scr ratio/GFR drop. **The baseline GFR is anchored to the CKD-EPI 2021 race-free creatinine equation** (R-6, doc/12 row 4b) whenever a measured serum creatinine is carried on the profile (`ckdepi_2021_egfr`, BSA-scaled via Mosteller). **KIM-1 tubular biomarker:** the proximal-tubule injury signal is translated to a graded urinary KIM-1 xUNL row (`summarize_clinical_kidney`: `1 + 8·injury`) with CTCAE-style thresholds (1.5/3/5/10 xUNL), so nephrotoxicity is also surfaced by a tubule-specific marker, not only by GFR/creatinine. Validated: exact Scr=P/GFR at zero exposure, monotonic KDIGO escalation, and CKD-EPI reference points / pipeline wiring (L2 cases).

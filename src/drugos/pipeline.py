@@ -64,13 +64,20 @@ from drugos.reliability import (
     apply_measurements,
     reliability_of,
 )
+from drugos.target.dti import (
+    cns_ic50_nm as _dti_cns_ic50_nm,
+)
+from drugos.target.dti import (
+    no_public_data_sites,
+    resolve_offtarget_panel,
+)
 from drugos.target.occupancy import (
     PanelEngagement,
     TargetOccupancyResult,
     simulate_occupancy,
     simulate_panel,
 )
-from drugos.target.resolver import bind_site, kd_from_score, resolve_admet_panel
+from drugos.target.resolver import bind_site, kd_from_score
 from drugos.target.targets import Target, safety_panel
 
 _NM_PER_MG = 1e6
@@ -243,7 +250,11 @@ def _assert_full_fidelity(spec: RunSpec) -> None:
         )
 
 
-def fidelity_provenance(spec: RunSpec, exposure: ExposureProfile) -> dict[str, Any]:
+def fidelity_provenance(
+    spec: RunSpec,
+    exposure: ExposureProfile,
+    no_public_data_sites: tuple[str, ...] = (),
+) -> dict[str, Any]:
     """Serialize the fidelity provenance (trust record) of a full-chain run.
 
     Every report must disclose where each admitted value came from (doc/08
@@ -287,7 +298,9 @@ def fidelity_provenance(spec: RunSpec, exposure: ExposureProfile) -> dict[str, A
         "estimates": (
             [{"term": k, "basis": v} for k, v in sorted(spec.estimate_basis.items())] or None
         ),
-        "class_prior_sites": sorted(t.name for t in spec.panel if t.low_confidence),
+        "no_public_data_sites": sorted(
+            no_public_data_sites or (t.name for t in spec.panel if t.low_confidence)
+        ),
         "admet_ml_estimates": ml_estimates,
         "reliability": reliability_of(spec, scaffold=benchmark_data(spec.molecule.name or "")),
     }
@@ -442,6 +455,7 @@ class RunResult:
     verdict: str
     r_verify: RVerify | None = None
     empirical_agreement: dict[str, Any] | None = None
+    panel_no_data_sites: tuple[str, ...] = ()
 
     def to_contract(self) -> dict[str, Any]:
         """Serialize the full run to the doc/03 report contract."""
@@ -555,7 +569,7 @@ class RunResult:
 
     def _trust_record(self) -> dict[str, Any]:
         """The ``trust`` contract section (fidelity provenance + agreement)."""
-        trust = fidelity_provenance(self.spec, self.exposure)
+        trust = fidelity_provenance(self.spec, self.exposure, self.panel_no_data_sites)
         if self.empirical_agreement is not None:
             trust["empirical_agreement"] = self.empirical_agreement
         return trust
@@ -618,33 +632,64 @@ def _effective_herg_kd_nm(spec: RunSpec) -> float | None:
     return kd_from_score(spec.admet.hERG, prior)
 
 
-def _herg_sieved_panel(spec: RunSpec) -> tuple[Target, ...]:
+def _resolve_panel(spec: RunSpec) -> tuple[tuple[Target, ...], tuple[str, ...]]:
     """Resolve the safety panel for Stage-2 occupancy (doc/05 2.2-2.3, doc/12 D10).
 
-    ``spec.panel`` is first re-scored site-by-site from the ADMET-AI heads that
-    measure the same interaction (CYP2D6/3A4/2C9 inhibition, path A seam), then
-    the hERG site is bound to the effective KD — a measured ``qt_ic50_nm``
-    override stays absolute, otherwise the corpus-calibrated head sieve applies.
-    Keeps occupancy (and the pathway drive) consistent with the QT and exposure
-    anchors: the resolved KD is replaced in every consumer at once.
+    Site-by-site, three seams (doc/12 L13/L15, path A + path B + the hERG
+    anchor):
+    - path B heads first: every site whose ADMET-AI head measures the same
+      interaction (CYP2D6/3A4/2C9 inhibition) is re-scored from the head,
+    - path A resolver: every site with *chemotype support* in the vendored
+      ChEMBL snapshot (top-match Tanimoto >= ``MIN_NEIGHBOR_TANIMOTO``) is
+      re-bound to its fingerprint-kNN-predicted KD (structure-derived,
+      ``low_confidence`` cleared); sites without support stay on their
+      disclosed priors,
+    - then the hERG site is bound to the effective KD — a measured
+      ``qt_ic50_nm`` override stays absolute (a measured anchor, not a prior),
+      otherwise the corpus-calibrated head sieve applies.  Keeps occupancy
+      (and the pathway drive) consistent with the QT and exposure anchors.
+    Returns ``(resolved_panel, no_public_data_sites)`` — computed on the final
+    panel — the sites that still sit on disclosed class priors: the sites with
+    no public bioactivity row in the snapshot (MRP3/MRP4, mitochondrial
+    complexes II-IV, pyruvate carrier) plus any mapped site whose query has no
+    chemotype support.
     """
-    panel = resolve_admet_panel(spec.panel, spec.admet)
+    smiles = spec.molecule.canonical_smiles if spec.molecule is not None else None
+    panel = resolve_offtarget_panel(spec.panel, smiles=smiles, admet=spec.admet)[0]
     if spec.qt_ic50_nm is not None:
-        return bind_site(
+        panel = bind_site(
             panel,
             "hERG (Kv11.1)",
-            spec.qt_ic50_nm,
+            float(spec.qt_ic50_nm),
             "measured hERG IC50 override (absolute)",
+            low_confidence=False,
         )
-    eff = _effective_herg_kd_nm(spec)
-    if eff is not None:
-        return bind_site(
-            panel,
-            "hERG (Kv11.1)",
-            eff,
-            "hERG KD from ADMET-AI head, corpus-calibrated monotone P->KD (doc/12 D10)",
-        )
-    return panel
+    else:
+        eff = _effective_herg_kd_nm(spec)
+        if eff is not None:
+            panel = bind_site(
+                panel,
+                "hERG (Kv11.1)",
+                eff,
+                "hERG KD from ADMET-AI head, corpus-calibrated monotone P->KD (doc/12 D10)",
+                low_confidence=False,
+            )
+    return tuple(panel), no_public_data_sites(panel)
+
+
+def _resolved_cns_ic50_nm(spec: RunSpec) -> float | None:
+    """CNS potency anchor for the grading seam (doc/12 L12).
+
+    An explicit ``spec.cns_ic50_nm`` stays absolute; otherwise a real molecule
+    is graded against the structure-derived worst-case prediction over the
+    CNS-liability set (never more potent than the conservative default).
+    ``None`` only when no structure is available.
+    """
+    if spec.cns_ic50_nm is not None:
+        return spec.cns_ic50_nm
+    if spec.molecule is not None and spec.molecule.canonical_smiles:
+        return _dti_cns_ic50_nm(spec.molecule.canonical_smiles)
+    return None
 
 
 def _qt_ic50(spec: RunSpec) -> float | None:
@@ -813,6 +858,7 @@ def _organ_state(
     PathwayResult | None,
     float,
     CnsParams,
+    tuple[str, ...],
 ]:
     """Run the downstream stages (occupancy -> pathway -> organ QST) on ``pk``."""
     liver_free = pk.unbound_tissues["liver"]
@@ -822,14 +868,14 @@ def _organ_state(
     # for ADMET-AI-scored novel molecules, the predicted-hERG sieve.
     panel: PanelEngagement | None = None
     primary_signal: TargetOccupancyResult | None = None
+    no_data_sites: tuple[str, ...] = ()
     if include_pathway:
         # The hERG site enters every downstream consumer (occupancy/primary
-        # signal, QT drive, exposure anchors) at one effective KD — a measured
-        # override or, for ADMET-AI-scored novel molecules, the predicted-hERG
-        # sieve.
-        panel = simulate_panel(
-            pk.t, liver_free, _herg_sieved_panel(spec), mw=spec.mw, n_eval=spec.n_eval
-        )
+        # signal, QT drive, exposure anchors) at one effective KD — the panel
+        # is first resolved per-site from ADMET-AI heads and the ChEMBL-kNN
+        # resolver, then the hERG override binds everywhere at once.
+        resolved_panel, no_data_sites = _resolve_panel(spec)
+        panel = simulate_panel(pk.t, liver_free, resolved_panel, mw=spec.mw, n_eval=spec.n_eval)
         primary_signal = max(
             (r for r in panel.results.values()),
             key=lambda r: r.time_at_target_h,
@@ -908,7 +954,9 @@ def _organ_state(
     # partition is already folded in, so the residual kpu_brain scale is 1.0
     # unless ADMET-AI's BBB_Martins head predicts a non-penetrant (then 0.2).
     kpu_brain = kpu_brain_from_bbb(spec.admet.BBB if spec.admet is not None else None)
-    cns_params = CnsParams(ic50_nm=spec.cns_ic50_nm or _CNS_IC50_DEFAULT_NM, kpu_brain=kpu_brain)
+    resolved_cns = _resolved_cns_ic50_nm(spec)
+    cns_ic50 = resolved_cns if resolved_cns is not None else _CNS_IC50_DEFAULT_NM
+    cns_params = CnsParams(ic50_nm=cns_ic50, kpu_brain=kpu_brain)
     cns = simulate_cns(
         pk.t,
         pk.unbound_tissues["brain"],
@@ -916,7 +964,19 @@ def _organ_state(
         cns_params,
     )
 
-    return panel, primary_signal, liver, block, cardiac, kidney, cns, pathway, kpu_brain, cns_params
+    return (
+        panel,
+        primary_signal,
+        liver,
+        block,
+        cardiac,
+        kidney,
+        cns,
+        pathway,
+        kpu_brain,
+        cns_params,
+        no_data_sites,
+    )
 
 
 def _organ_feedback(
@@ -975,6 +1035,7 @@ def run_pipeline(spec: RunSpec) -> RunResult:
             _pathway,
             _kpu,
             _cns_params,
+            _nds,
         ) = _organ_state(pk, model, spec, include_pathway=False)
         model = apply_pk_scaling(model, _organ_feedback(model, liver, kidney, _cardiac))
         pk = simulate_pbpk(model, tmax_h=spec.tmax_h, n_eval=spec.n_eval)
@@ -990,6 +1051,7 @@ def run_pipeline(spec: RunSpec) -> RunResult:
         pathway,
         cns_kpu_brain,
         cns_params,
+        panel_no_data_sites,
     ) = _organ_state(pk, model, spec)
 
     physiology = model.physiology
@@ -1012,6 +1074,7 @@ def run_pipeline(spec: RunSpec) -> RunResult:
         biomarkers=_grade_organ(liver, cardiac, kidney, cns, cns_params),
     )
 
+    resolved_cns = _resolved_cns_ic50_nm(spec)
     exposure = ExposureProfile(
         plasma_cmax_unbound_nm=_mg_l_to_nm(float(np.max(pk.plasma_free)), spec.mw),
         liver_cmax_free_nm=_mg_l_to_nm(float(np.max(liver_free)), spec.mw),
@@ -1019,8 +1082,8 @@ def run_pipeline(spec: RunSpec) -> RunResult:
         qt_ic50_nm=_qt_ic50(spec),
         dili_ic50_nm=_dili_ic50(spec),
         dili_immune_ic50_nm=spec.dili_immune_ic50_nm,
-        cns_ic50_nm=spec.cns_ic50_nm or _CNS_IC50_DEFAULT_NM,
-        cns_anchored=spec.cns_ic50_nm is not None,
+        cns_ic50_nm=resolved_cns if resolved_cns is not None else _CNS_IC50_DEFAULT_NM,
+        cns_anchored=resolved_cns is not None,
         cns_kpu_brain=cns_kpu_brain,
         beta_block_ic50_nm=spec.beta_block_ic50_nm,
     )
@@ -1043,6 +1106,7 @@ def run_pipeline(spec: RunSpec) -> RunResult:
         verdict=_verdict(toxicity),
         r_verify=_r_verify_pk(pk.t, pk.plasma_total, pk.dose_mg),
         empirical_agreement=empirical_agreement,
+        panel_no_data_sites=panel_no_data_sites,
     )
 
 

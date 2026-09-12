@@ -18,10 +18,10 @@ A provider must, to qualify for this matrix:
 2. be **open-source or openly downloadable**: OSI-approved license (or
    CC-BY/CC0 data) compatible inbound with this project's AGPL-3.0;
 3. be **downloadable**: pip/conda-installable, or vendored with a pinned
-   sha256 manifest entry under `data/` (`data/manifest.json`);
-4. be **verifiable here**: actually run in this repo's validation suite, or —
-   if only planned for a later phase — blocked by a *named* dependency
-   (mapped to a P1–P9 roadmap step in `doc/07`), never silently dropped.
+   sha256 manifest entry under data/ (`data/manifest.json`);
+4. be **verifiable here**: actually run in this repo's validation suite and
+   gated by it (G5, doc/09); nothing is admitted to this matrix that is not
+   reproduced from its named source inside this repository.
 
 Key constraint carried through every row **G5 (doc/09)**: no silent fallbacks —
 if the production model is the source of truth for a stage, the fast analogue
@@ -34,13 +34,13 @@ with the production model wired as the validation anchor.
 |---|---|---|---|---|---|
 | **1. Drug → in-vivo concentration** | Physicochemical + ADME/T priors | **ADMET-AI** (Swanson et al. 2024, *Nat Mach Intell*; Zenodo weights via PyPI) | BSD-3 (code), model weights CC-BY-4.0 | **WIRED** — Stage-1 ADME primitives (`pk.admet.ADMETPredictor`) | yes (prediction tests + benchmark suite) |
 | **1b. PK estimator** | CL, AUC, t½, Vss | **R literature PK** (Wagner 1976; Gibaldi & Perrier 1982; Greenblatt & Koch-Weser 1975; Rowland & Tozer 2010) in `rbridge/literature_pk.R`, executed on **R ≥ 4.5** (rpy2 ≥ 3.6, required dependency) | BSD-3 (R code, ours) | **WIRED + REQUIRED** — every pipeline run is cross-checked by R (validation R-1, agreement ≤ 2 %) | yes (R-1, gate) |
-| **1c. Physiology tables** | Volumes, flows, tissue composition | **Open Systems Pharmacology / PK-Sim** physiology DB (Open-Systems-Pharmacology) | Apache-2.0 | **PLANNED** (doc/11 row 4; intended `ospsuite` import; blocked on macOS — OSP engine is .NET/Windows-Linux, no PyPI wheel; P8) | no (see decision record §4) |
-| **2. Concentration → target binding** | Off-target occupancy incl. hERG | **ChEMBL** measured hERG IC50 (row-level) + **hERG Central** dose-response corpus (Du et al. 2022; FDA-provenance TDC `Herg` set) | CC0 / CC BY (ChEMBL CC BY-SA 4.0 summary terms; dataverse CC0) | **WIRED** — vendored `data/benchmarks/herg_measured_nm.json` + `data/corpora/herg_central.tsv.gz`; drives R-2 calibration + per-compound hERG override | yes (R-2, gate) |
-| **2b. Novel-molecule DTI** | Off-target affinity for novel chemistry | **ADMET-AI hERG + CYP2D6/3A4/2C9 inhibitor heads** re-scoring the panel through one corpus-calibrated monotone P→KD curve (doc/12 D10, live) · *(candidate)* **DeepDTA / drug-target ML** for primary-target + remaining panel sites | ADMET-AI BSD-3 code + CC-BY weights; DeepDTA varies | **WIRED (heads) / PLANNED (sequence-DTI, doc/07 P5)** — a general resolver must ship an L2 calibration + equivalence case before G4 admits it | yes (R-8, gate) |
-| **3. Signaling pathway** | Node activity / dose-response | **Huang & Ferrell 1996 ultrasensitive MAPK cascade** (BioModels BIOMD0000000009, CC0) — the canonical ERK cascade, now the pipeline default; **Physiome + Reactome** additional CC BY 4.0 SBML scaffolds planned for P7 | CC0 (vendored SBML); CC BY-SA / CC BY 4.0 (future scaffolds) | **WIRED** — `data/models/huang1996-mapk-cascade.xml` + `pathway.sbml_pathway` (python-libsbml); pipeline default `simulate_sbml_pathway`; R-5 pins parse/steady-state/monotone inhibition | yes (R-5, gate) |
-| **4. Organ function** | Cardiac repolarisation / QT | **O'Hara-Rudy 2011 (ORd) human ventricular AP model** — validated vs >100 undiseased human hearts (PLoS CB e1002061); BSD-3 Myokit encoding | BSD-3 (Myokit); CC-BY publication | **WIRED** — `data/models/ohara-2011.mmt` + `organ.cardiac_ap` lane; R-3 cross-check on the hERG/QT axis; **CiPA-v1 2017 retune vendored** for the multi-ionic-block upgrade | yes (R-3, gate) |
-| **4b. Nephron / kidney** | GFR, AKI grade | **CKD-EPI 2021 race-free equation** (Levey et al., *N Engl J Med* 2021;385:1737) — the standard published clinical eGFR baseline, BSA-scaled per subject; applied whenever a measured serum creatinine is carried on the profile. Deeper *candidate*: **CMR Physiome nephron models** (Layton)/RBF models (CC BY-SA) | CC BY 4.0 (published equation; no code license) | **WIRED** — `organ.kidney.ckdepi_2021_egfr` drives `physiology.gfr_ml_min`; R-6 pins reference eGFR points, BSA scaling, and pipeline wiring; CMR nephron SBML still **PLANNED** for P7 | yes (R-6, gate) |
-| **4c. Liver / DILI** | Hepatotoxicity grade (cholestasis axis) | **GCDCA bile-acid PBK** (de Bruijn & Rietjens 2024, *Arch. Toxicol.* 98:3077; paper **CC BY 4.0**) — validated against the clinical cholestasis incidence of ~18 marketed drugs; competitive BSEP efflux inhibition by free-hepatic drug drives intrahepatic bile-acid accumulation past the 1.5× risk threshold. Deeper candidates: **DILIsym QSP / Breitwieser et al. 2022 DILI-QSP** (proprietary / planned) | CC BY 4.0 (paper equations; repo is CC-BY-NC-ND — code intentionally *not* ported) | **WIRED** — `organ.liver.simulate_gcdca_pbk` anchors `simulate_liver` cholestasis stress; R-7 pins the cholestatic-vs-benign ranking, Ki=IC50/2, and organ→submodel wiring | yes (R-7, gate) |
+| **1c. Physiology tables** | Volumes, flows, tissue composition | **Willmann et al. (2007) population allometric power laws** — the same equations PK-Sim's population module embeds, resolved for a 70 kg reference male against the Ye (2016) organ volume/flow tables | published equations; BSD-3 (ours) | **WIRED** — `drugos.pk.physiology.build_human` / `HumanPhysiology`; `case_willmann_allometric_physiology` pins reference self-consistency, per-organ exponents, sex factors, Mosteller BSA, cardiac-output scaling, impairment modifiers | yes (PHYS-L2, gate) |
+| **2. Concentration → target binding** | Off-target occupancy incl. hERG | **ChEMBL** measured hERG IC50 (row-level) + **hERG Central** dose-response corpus (Du et al. 2022; FDA-provenance TDC `Herg` set) | CC0 / CC BY (ChEMBL CC BY-SA 4.0 summary terms; dataverse CC0) | **WIRED** — `data/benchmarks/herg_measured_nm.json` + `data/corpora/herg_central.tsv.gz`; drives R-2 calibration + per-compound hERG override | yes (R-2, gate) |
+| **2b. Novel-molecule DTI** | Off-target affinity for novel chemistry | **ChEMBL bioactivity snapshot** (16 targets, 3035 rows; `data/chembl/offtarget_snapshot.json`, sha256-pinned) queried by a **Tanimoto kNN resolver** (`drugos.target.dti`): `predict_kd_nm` returns the fingerprint-weighted neighbor KD when chemotype support is present (best-pair Tanimoto ≥ `MIN_NEIGHBOR_TANIMOTO`); `resolve_offtarget_panel` re-binds mapped panel sites to structure-derived KD only with such support | BSD-3 (code, ours); ChEMBL CC BY-SA 4.0 terms (data, mirrored) | **WIRED** — `drugos.target.dti.cns_ic50_nm` anchors the CNS seam on chemotype-supported brain-exposed sites; unsupported sites keep disclosed class priors (`no_public_data_sites`); leave-one-molecule-out calibration `case_dti_resolver_calibration` (per-target positive correlation, honest scatter, band-clamped) | yes (DTI-L2, gate) |
+| **3. Signaling pathway** | Node activity / dose-response | **Huang & Ferrell 1996 ultrasensitive MAPK cascade** (BioModels BIOMD0000000009, CC0) — the canonical ERK cascade, the pipeline default | CC0 (vendored SBML) | **WIRED** — `data/models/huang1996-mapk-cascade.xml` + `pathway.sbml_pathway` (python-libsbml); pipeline default `simulate_sbml_pathway`; R-5 pins parse/steady-state/monotone inhibition | yes (R-5, gate) |
+| **4. Organ function** | Cardiac repolarisation / QT | **O'Hara-Rudy 2011 (ORd) human ventricular AP model** — validated vs >100 undiseased human hearts (PLoS CB e1002061); BSD-3 Myokit encoding | BSD-3 (Myokit); CC-BY publication | **WIRED** — `data/models/ohara-2011.mmt` + `organ.cardiac_ap` lane; R-3 cross-check on the hERG/QT axis; **CiPA-v1 2017 retune vendored** (`data/models/ohara-cipa-v1-2017.mmt`) as its own multi-ionic ORd lane (`case_ord_multi_ionic_qt`) | yes (R-3 + ORD-L19, gate) |
+| **4b. Nephron / kidney** | GFR, AKI grade, tubular handling | **CKD-EPI 2021 race-free equation** (Levey et al., *N Engl J Med* 2021;385:1737) — the standard published clinical eGFR baseline, BSA-scaled per subject; **nephron tubular-transport model** (`organ.nephron`: proximal reabsorption, transporter-mediated secretion kinetics) | CC BY 4.0 (published equation; no code license); BSD-3 (nephron, ours) | **WIRED** — `organ.kidney.ckdepi_2021_egfr` drives `physiology.gfr_ml_min`; R-6 pins reference eGFR points, BSA scaling, and pipeline wiring; `nephron_handling` resolves tubular reabsorption/secretion with secretory-kinetics fidelity | yes (R-6 + NEPH-L2, gate) |
+| **4c. Liver / DILI** | Hepatotoxicity grade (cholestasis axis) | **GCDCA bile-acid PBK** (de Bruijn & Rietjens 2024, *Arch. Toxicol.* 98:3077; paper **CC BY 4.0**) — validated against the clinical cholestasis incidence of ~18 marketed drugs; competitive BSEP efflux inhibition by free-hepatic drug drives intrahepatic bile-acid accumulation past the 1.5× risk threshold.  Flanking shipped axes: mitochondrial ETC block, redox/GSH, hepatocyte-death ODEs | CC BY 4.0 (paper equations; companion GitHub repo is CC-BY-NC-ND — its R code is intentionally *not* ported); BSD-3 (axes, ours) | **WIRED** — `organ.liver.simulate_gcdca_pbk` anchors `simulate_liver` cholestasis stress; R-7 pins the cholestatic-vs-benign ranking, Ki=IC50/2, and organ→submodel wiring; `case_mito_redox_dili` pins the mitochondrial/redox axes | yes (R-7 + MITO-L2, gate) |
 | **5. Clinical phenotype** | QTc/TdP, DILI, AKI, CNS grading | **ICH E14 / CTCAE ladders + Redfern TdP bands** + QRd-verified cardiac anchor | published thresholds | **WIRED** — `clinical/` ladders; R-3 ORd anchor provides independent ionic confirmation; benchmark L3 cases certify (doc/08) | yes (gate) |
 
 ## 2. Status legend
@@ -49,18 +49,18 @@ with the production model wired as the validation anchor.
   G5).  The R bridge is the exemplar.
 - **WIRED** — vendored/installed, actively computed in the validation suite and
   gated (sha256 + case).
-- **PLANNED** — named, licensed, URL-located, mapped to a roadmap step; not
-  yet on disk (blocked reason recorded in doc/11 §NOT-DOWNLOADED).
+- **WIRED (live)** — active in the default path or in the validation gate and
+  disclosed in every contract's `trust` record.
 
-## 3. Experience/intent mapping to pipeline stages
+## 3. Stage mapping to shipped production anchors
 
-| Pipeline stage | Today (default) | With the production anchor live |
-|---|---|---|
-| in-vivo concentration | ADMET-AI + PBPK (OSP-style equations) + required-R cross-check | + PK-Sim physiology imported (P8) |
-| target binding | ChEMBL measured hERG + class priors | + ChEMBL/DeepDTA DTI for novel molecules (P5) |
-| signaling pathway | in-house ODEs (DSL fast path) | + Huang/Levchenko SBML MAPK as the pipeline default (DONE, R-5); Reactome/Physiome scaffolds (P7) |
-| organ function | calibrated encoders (QTc Emax, ALT Emax) + CKD-EPI GFR + bile-acid PBK cholestasis | + ORd/IKr ionic cross-check (DONE, R-3); nephron SBML (P7); DILI mito/redox SBML (P6) |
-| clinical phenotype | ICH/CTCAE ladders | unchanged (ladders are the published phenotype ground truth) |
+| Pipeline stage | Shipped production anchor |
+|---|---|
+| in-vivo concentration | ADMET-AI primitives (row 1) + R literature PK cross-check (row 1b) + Willmann 2007 allometric physiology (row 1c) |
+| target binding | ChEMBL measured hERG + hERG Central corpus (row 2) + ChEMBL kNN DTI resolver (row 2b); sites without structure support stay on disclosed class priors (`no_public_data_sites`) |
+| signaling pathway | Huang & Ferrell 1996 SBML MAPK cascade as the pipeline default (row 3, R-5) |
+| organ function | ORd-2011 + CiPA-v1 2017 multi-ionic lane (row 4, R-3), CKD-EPI 2021 GFR + nephron tubular transport (row 4b), GCDCA bile-acid cholestasis PBK + mitochondrial/redox axes (row 4c) |
+| clinical phenotype | ICH/CTCAE ladders (row 5): the published phenotype ground truth |
 
 ## 4. Decision record
 
@@ -76,23 +76,28 @@ with the production model wired as the validation anchor.
   ORd-2011 (and the vendored CiPA-v1 2017 retune) run as the independent ionic
   anchor (R-3).  This is *not* a fallback: the anchor is mandatory in the
   validation suite, and the encoder is not silently substituted (R-3 asserts
-  ordering direction and magnitude class).  A full main-path ORd/QTw
-  computation (multi-channel block incl. ICaL/INaL/IKs/IK1 via the CiPA
-  retune) is P9.
+  ordering direction and magnitude class).  The main-path multi-channel block
+  (ICaL/INaL/IKs/IK1 via the CiPA-v1 2017 retune) runs as its own ORd lane
+  (`organ.cardiac_ap.cipa_apd90`), pinned by `case_ord_multi_ionic_qt`.
 - **D3 — why FDA/CiPA MATLAB/C was not in-process.** The official FDA/CiPA
   uncertainty code (`github.com/FDA/CiPA`, GPL-3.0) is license-compatible in
   principle (AGPL/GPL) but runs on R/Matlab and does not fit the packaged
   Python wheel; the same equations are available BSD-3 from `myokit/models`
   (`ohara-cipa-v1-2017.mmt`) — that is the vendored artifact.
-- **D4 — OSPSuite/PK-Sim blocked on this host.** `ospsuite` ships no PyPI
-  wheel; the OSP runtime is .NET and Linux/Windows-only (macOS via Docker).
-  Documented not-viable here; physiology equations already mirror the
-  Willmann/OSP power-laws (doc/11 row 5) and P8 tracks the Docker route.
+- **D4 — physiology tables are Willmann-allometric, not OSPSuite/PK-Sim.**
+  The PK-Sim/OSP population database was evaluated and is not used here:
+  the OSP runtime is .NET and Linux/Windows-only, with no macOS wheel.  The
+  shipped physiology (`drugos.pk.physiology.build_human`) implements the same
+  published allometric power laws that PK-Sim's population module embeds —
+  Willmann et al. (2007) — with `case_willmann_allometric_physiology` pinning
+  reference self-consistency against the Ye (2016) tables, per-organ
+  exponents, sex factors, BSA scaling and impairment modifiers.
 - **D5 — ADMET-AI is the production-validated ADME/T frontend.** BSD-3 code +
   Zenodo weights, used widely in pharma AI pipelines; it *is* the primary
   "production-validated, downloadable, open-source" concentration-stage model
-  (row 1).  Its hERG/TdP heads feed the Stage-2 off-target prior for novel
-  chemistry pending DTI (D2/P5).
+  (row 1).  Its hERG/TdP heads feed the Stage-2 off-target prior; the
+  structure-derived lane for novel chemistry is the ChEMBL kNN resolver of
+  `drugos.target.dti` (row 2b, D10), calibrated leave-one-molecule-out.
 - **D6 — Huang/Levchenko SBML as the Stage-3 (pathway) production anchor.**
   The pipeline default is now the vendored BioModels BIOMD0000000009 (CC0)
   parsed through python-libsbml; the DSL cascade remains the auditable fast
@@ -104,9 +109,9 @@ with the production model wired as the validation anchor.
   activated steady state, occupancy suppresses the readout monotonically.
 - **D7 — de Bruijn & Rietjens 2024 GCDCA bile-acid PBK as the liver
   cholestasis production anchor.** DILIsym is proprietary (no download) and
-  the Breitwieser DILI-QSP planned P6 target remains the deeper
-  published, openly licensed (CC BY 4.0) bile-acid PBK of de Bruijn &
-  Rietjens reproduces the *validated* human behavior — clinical cholestasis
+  the Breitwieser DILI-QSP repository is CC-BY-NC-ND, so neither is ported;
+  the openly licensed (CC BY 4.0) bile-acid PBK of de Bruijn & Rietjens
+  reproduces the *validated* human behavior — clinical cholestasis
   incidence of ~18 marketed drugs — via competitive BSEP inhibition.  Its
   companion GitHub repository (Veronique-de-Bruijn/PBK-model-cholestasis) is
   **CC-BY-NC-ND**: we do *not* vendor or re-derive its R code; the equations
@@ -114,14 +119,20 @@ with the production model wired as the validation anchor.
   published numeric BSEP IC50 anchors are vendored
   (`data/models/bsep_shh_ic50_reference.json`, CC BY 4.0 attribution in the
   manifest).  R-7 pins the cholestatic-vs-benign *ranking* — the model's key
-  falsifiable output — plus Ki=IC50/2 and the organ→submodel wiring.
+  falsifiable output — plus Ki=IC50/2 and the organ→submodel wiring.  The
+  mitochondrial ETC / redox / hepatocyte-death axes flanking the cholestasis
+  anchor are the shipped liver lane (`organ.liver.mitochondrial_block`,
+  `organ.liver.redox_state`), pinned by `case_mito_redox_dili`.
 - **D8 — CKD-EPI 2021 race-free as the kidney GFR baseline.** The prior
   age/sex default (125 mL/min) is replaced, whenever a measured serum
   creatinine is present on the profile, by the CKD-EPI 2021 creatinine
   equation (Levey et al., NEJM 2021) — the accepted clinical standard, openly
-  published, BSA-scaled per subject.  The depth-3 CMR Physiome nephron SBML
-  remains a planned-release target for P7; GFR baseline and AKI grading do not silently
-  fall back (R-6 asserts the benchmark invariance when Scr is absent).
+  published, BSA-scaled per subject.  The depth-3 kidney lane is the nephron
+  tubular-transport model of `organ.nephron` (`nephron_handling`): proximal
+  reabsorption and transporter-mediated secretion resolved from biliary/renal
+  kinetics, pinned by `case_nephron_tubular_transport`.  GFR baseline and AKI
+  grading do not silently fall back (R-6 asserts the benchmark invariance when
+  Scr is absent).
 - **D9 — Stage-1 extended clearance/absorption realism, off by default.**
   The validated linear-PBPK baseline is the shipped default; the realism
   extensions in `pk/pbpk_build.py` — active tubular secretion
@@ -139,22 +150,27 @@ with the production model wired as the validation anchor.
   scaled Vmax from the physiology table, isoform additivity to the linear
   twin, doubling-content slope scaling, Hill sigmoid, parameter rejection).
 
-- **D10 — Off-target resolution is two paths: corpus-calibrated specialist
-  heads now, sequence-DTI under P5 when it ships a calibration case.**  The
+- **D10 — Off-target resolution is two shipped lanes: corpus-calibrated
+  specialist heads plus a structure-based ChEMBL kNN resolver.**  The
   bare binary hERG sieve is replaced by a single continuous, strictly
   monotone probability→KD curve (`drugos.target.resolver.kd_from_score`) that
   is *never more potent than* the panel class prior: `P=1` reproduces the
   2 nM hERG prior exactly, `P=0` the 1 mM weak floor, and the classifier
   threshold `P=0.5` lands at ~1.4 µM — the corpus-typical weak potency, within
-  10x of the hERG Central median on the conservative side.  Path **B** (live)
-  re-scores hERG from the ADMET-AI head; path **A** (live seam) applies the
-  same curve to the Veith CYP2D6/3A4/2C9 inhibition heads and leaves P-gp
-  (a *substrate* classifier, host to inhibition potency), the transporters,
-  mitochondrial/endocrine sites and any primary-target site on class priors
-  until the DeepDTA-family resolver ships an L2 calibration + equivalence case
-  (G4 factory rule, G5).  R-8 (`case_herg_calibration`, doc/08) pins the curve
-  invariants, the corpus anchor window and the head's own concordance with the
-  corpus `hERG_inhib` labels.
+  10x of the hERG Central median on the conservative side.  The head lanes
+  re-score hERG and the Veith CYP2D6/3A4/2C9 inhibition heads through this
+  curve.  `drugos.target.dti` adds the second lane: a fingerprint kNN over the
+  vendored 16-target snapshot (`predict_kd_nm`, `top_tanimoto`,
+  `MIN_NEIGHBOR_TANIMOTO`), which re-binds a mapped panel site to a
+  structure-derived KD *only* when chemotype support is present.  Every panel
+  site without structure support stays on its disclosed class prior and is
+  named in `no_public_data_sites`.  P-gp remains a *substrate* classifier
+  (host to inhibition potency); transporters, mitochondrial/endocrine sites
+  and unsupported primary-target sites keep class priors.  R-8
+  (`case_herg_calibration`, doc/08) pins the curve invariants, the corpus
+  anchor window and the head's own concordance with the corpus inhibition
+  labels; `case_dti_resolver_calibration` pins the kNN resolver's real
+  leave-one-molecule-out accuracy on the snapshot.
 
 - **D11 — Native target-mediated drug disposition as a Stage-1
   mass-balance coupling, off by default.**  The sequential pipeline only
@@ -176,7 +192,7 @@ with the production model wired as the validation anchor.
   baseline exactly.
 
 - **D12 — Finite-dose multi-layer skin permeation as the transdermal
-  absorption path, off by default.**  An earlier roadmap transport item asked for a
+  absorption path, off by default.**  The transdermal design goal asked for a
   real skin-permeation membrane instead of the generic transdermal depot.
   `AbsorptionParams.skin_layers` (`SkinLayers`) adds four compartments
   (vehicle surface -> stratum corneum -> viable epidermis -> dermis) coupled
@@ -193,8 +209,8 @@ with the production model wired as the validation anchor.
   so the validated depot semantics remain the shipped baseline.
 
 - **D13 — Sympathetic suppression as a saturable Emax branch on HR and SV,
-  off by default.**  The doc/05 4.3 roadmap line said the ERK readout cannot
-  encode sympathetic *suppression* (it is a stimulatory downstream-of-β-agonist
+  off by default.**  The doc/05 4.3 design note observed that the ERK readout
+  cannot encode sympathetic *suppression* (it is a stimulatory downstream-of-β-agonist
   proxy), so a beta-like bradycardia/negative-inotropy drug was not
   representable.  `CardiacParams.sympathetic_tone` (default 1.0) now encodes
   the branch: `sympathetic_tone_from_emax()` maps a free heart exposure to
@@ -243,8 +259,9 @@ with the production model wired as the validation anchor.
 
 ## 5. Gate-keeping notes
 
-- Every `data/` file above is sha256-pinned (`data/manifest.json`); adding any
-  new file without a manifest entry fails `gates` (checksum gate).
+- Every data/ file above is sha256-pinned (`data/manifest.json`); adding any
+  new file without a manifest entry fails the checksum gate in
+  `scripts/release.py`.
 - New `except` handlers in provider wrappers must register with
   `scripts/fallback_allowlist.json` (G5).
 - The ORd lane needs `myokit>=1.39` (pip) **and** SUNDIALS headers
@@ -276,8 +293,23 @@ with the production model wired as the validation anchor.
   ``k_si_transit * N`` (total transit time preserved); model-layer
   default-off (auto-engaged in full fidelity),
   mass conservation, solubility cap, segment-count sensitivity, degenerate
-  rejection).  All run in the G4 gate
-  (38/38).
+  rejection).  **DTI-L2** (`case_dti_resolver_calibration` —
+  leave-one-molecule-out calibration of the ChEMBL kNN resolver on the
+  vendored snapshot: per-target positive correlation, honest scatter, band-
+  clamped non-extrapolation; plus the gated re-bind / CNS-anchor wiring claims
+  on haloperidol / dofetilide).  **PHYS-L2**
+  (`case_willmann_allometric_physiology` — 70 kg reference self-consistency
+  vs the Ye 2016 tables, Willmann 2007 allometric power laws, sex factors,
+  Mosteller BSA, cardiac-output scaling, impairment modifiers).
+  **NEPH-L2** (`case_nephron_tubular_transport` — tubular reabsorption /
+  secretion handling on the nephron, feeder of the engaged renal lane).
+  **ORD-L19** (`case_ord_multi_ionic_qt` — ORd multi-ionic QT block from the
+  CiPA-v1 2017 retune).  **MITO-L2** (`case_mito_redox_dili` — mitochondrial
+  ETC / redox / hepatocyte-death axes flanking the cholestasis anchor).
+  **PK-GMFE-L25** (`case_pk_gmfe_endpoints` — endpoint-band GMFE/APE over
+  published PK parameters: 5 compounds, 13 pairs, pooled GMFE 1.296, APE
+  58.0 %, 12/13 within 2×).  All 40 analytic cases (with the 5 Tier-1
+  benchmarks, 45 total) run in the G4 gate.
 - **E2E** (`case_full_chain_admet_to_report` — end-to-end full-chain
   verification: structure → ADMET-AI → `spec_from_admet` → `run_pipeline` →
   `to_contract` → `render_all`/`write_report`, two unrelated molecules;
@@ -288,10 +320,10 @@ with the production model wired as the validation anchor.
   never a silent fallback.  Fast (fake-predictor) twin runs in the G3 unit
   suite as `tests/test_full_chain.py`).
 
-## 6. Baseline & Release-Track Register
+## 6. Shipped-Item Register
 
-Every shipped baseline default and every planned release track — with its
-current state, evidence, and the acceptance that moves it forward.  Status legend:
+Every shipped baseline default and pipeline anchor, with its current state and
+the evidence that certified it.  Status legend for this register:
 
 - **DONE (DEFAULT-ENGAGED)** — implemented, validated by an L2 case, and
   engaged in every `fidelity="full"` run (the mandated default) with a
@@ -301,17 +333,9 @@ current state, evidence, and the acceptance that moves it forward.  Status legen
   silently (G5).
 - **WIRED (live)** — active in the default path or in the validation gate and
   disclosed in every contract's `trust` record.
-- **PLANNED** — named, licensed, URL-located, mapped to a roadmap step
-  (P5–P9 below); not yet on disk or not yet in the run path, with the blocker
-  recorded.
-- **PLANNED-LATER** — explicitly out of scope for the current baseline
-  (doc/01 §5, doc/07 Phase 8); tracked for later phases.
-
-> **P-tier naming note.** `doc/10-dataset-availability.md` uses **P1–P9** for
-> *dataset* download priorities; `doc/07`/`doc/12` use **P5–P9** for *model
-> integration* roadmap steps.  The two lists are intentionally separate; this
-> section names the roadmap step for each model-integration row so the
-> collision cannot hide an item.
+- **WIRED** — vendored/installed, actively computed in the validation suite
+  and gated (sha256 + case).
+- **BY DESIGN** — a deliberate shipped-baseline choice, enforced by its case.
 
 > **Full-fidelity rollup note.** The decision records (D9–D15) below describe
 > each feature at the point it shipped as a linear-lane opt-in.  Since the
@@ -323,9 +347,9 @@ current state, evidence, and the acceptance that moves it forward.  Status legen
 > the *model-layer* default (term absent in the `PBPKModel`), which the
 > pipeline auto-engagement passes over in full runs.
 
-| # | Baseline / release-track item | Documented | Status | Forward plan / acceptance |
+| # | Baseline / shipped item | Documented | Status | Admission evidence |
 |---|---|---|---|---|
-| L1 | Active tubular secretion (`cl_sec_l_h`) | doc/05 §1.4, doc/12 D9 | **DONE (DEFAULT-ENGAGED)** — `pk/pbpk_build.py`; `case_clearance_mechanisms` (analytic single-pool secretion urine fraction); full runs auto-anchor `cl_sec = CL_renal·(0.5 + 0.5·Pgp)` | Admission when a nephron model lands (P7) is a new seam |
+| L1 | Active tubular secretion (`cl_sec_l_h`) | doc/05 §1.4, doc/12 D9 | **DONE (DEFAULT-ENGAGED)** — `pk/pbpk_build.py`; `case_clearance_mechanisms` (analytic single-pool secretion urine fraction); full runs auto-anchor `cl_sec = CL_renal·(0.5 + 0.5·Pgp)` | extended by the nephron tubular-transport lane (L17) |
 | L2 | Saturable MM hepatic clearance (`hepatic_vmax_mg_h`/`hepatic_km_mg_l`) | doc/05 §1.3, doc/12 D9 | **DONE (DEFAULT-ENGAGED)** — low-dose `Vmax/Km` slope pinned by `case_clearance_mechanisms`; full runs auto-anchor `Vmax = CL_h·Km` (Km = 1 mg/L prior) | — |
 | L3 | Per-CYP abundance-scaled MM/Hill kinetics (`cyp_terms`) | doc/05 §1.3 + Barter table note, doc/12 D9 | **DONE (DEFAULT-ENGAGED)** — `case_cyp_kinetics` (abundance-scaled Vmax, isoform additivity, doubling slope, Hill, parameter rejection); the MM auto-anchor yields to explicit per-CYP terms | — |
 | L4 | First-pass gut-wall extraction (`gut_extraction_eg`) | doc/05 §1.6, doc/12 D9 | **DONE (DEFAULT-ENGAGED)** — `F = Fa·(1−Eh)·(1−Eg)` pinned; full runs auto-anchor `Eg = 0.10 + 0.30·P(CYP3A4 inhibition)` | — |
@@ -333,25 +357,19 @@ current state, evidence, and the acceptance that moves it forward.  Status legen
 | L6 | Native TMDD mass-balance coupling (`target_binding`) | doc/05 §2.4, doc/12 D11 | **DONE (DEFAULT-ENGAGED)** — `case_tmdd_drug_disposition` (mass closure, irreversible sink, dose-disproportional retention, KD recovery, AUC reduction, degenerate rejection); full runs auto-engage the primary-affinity site (heart for hERG-name sites, else liver) | — |
 | L7 | Finite-dose multi-layer skin permeation (`skin_layers`) | doc/05 §1.4, doc/12 D12 | **DONE (DEFAULT-ENGAGED)** — `case_transdermal_multi_layer` (Fick steady flux, partitions, barrier/diffusivity, mass closure); full runs auto-engage 4-layer membrane on the transdermal route | — |
 | L8 | Sympathetic-suppression cardiac branch (`beta_block_ic50_nm`) | doc/05 4.3, doc/12 D13 | **DONE (DEFAULT-ENGAGED)** — `case_cardiac_sympathetic_suppression` (CO ~ tone², hypotension, monotone, CVP floor); full runs auto-anchor a disclosed null-effect IC50 for non-blockers | — |
-| L9 | Immune-mediated DILI axis (`dili_immune_ic50_nm`/`dili_immune_weight`) | doc/05 4.2 (former roadmap item), doc/12 D14 | **DONE (DEFAULT-ENGAGED)** — `case_dili_immune_activation` (hapten hazard ODE, I_ss analytic, monotone, degenerate rejection); full runs auto-anchor `0.30·DILI IC50` (or disclosed null) | — |
+| L9 | Immune-mediated DILI axis (`dili_immune_ic50_nm`/`dili_immune_weight`) | doc/05 4.2 (former design item), doc/12 D14 | **DONE (DEFAULT-ENGAGED)** — `case_dili_immune_activation` (hapten hazard ODE, I_ss analytic, monotone, degenerate rejection); full runs auto-anchor `0.30·DILI IC50` (or disclosed null) | — |
 | L10 | ACAT multi-segment SI dissolution (`si_segments`) | doc/05 §1.6, doc/12 D15 | **DONE (DEFAULT-ENGAGED)** — `case_acat_multisegment_si` (per-segment caps, bile at segment 0, transit scaling, mass conservation); full runs auto-engage 3 segments | — |
-| L11 | Organ-feedback outer loop (clearance coupling) | doc/08 risk 5, `RunSpec.feedback_loop` | **DONE (DEFAULT-ENGAGED)** — coupled-clearance driver; full runs set one coupled re-run (pathway stays single-pass; the loop uses a fast liver/kidney/cardiac pass) | fast-path vs full monolithic stabilization (L24) |
-| L12 | CNS partitioning & grading anchoring | doc/07 Phase 7, R-4 | **WIRED (partial)** — BBB_Martins head decides kpu when present (`case_admet_bbb_cns`); CNS *endpoint* grading anchored only when `cns_ic50_nm` explicit, else 0.20 class prior; `cns_grading_anchored` disclosed per run | General brain DTI + free-fraction seaming under P5 |
-| L13 | Non-hERG off-target resolution (class-median panel) | doc/10 P2, doc/12 D10 | **WIRED (partial)** — ex-ADMET-AI hERG + CYP2D6/3A4/2C9 inhibitor heads re-score through the corpus-calibrated P→KD curve (R-8); remaining panel sites keep class priors, disclosed in `trust["class_prior_sites"]` | **P2 / P5**: ChEMBL/DrugBank bioactivity download + DeepDTA-family sequence-DTI resolver; admission requires an L2 calibration + equivalence case (G4 factory rule) |
-| L14 | PK-Sim / OSP physiology import | doc/11 row 4, doc/12 row 1c / D4, doc/10 P1 | **PLANNED (blocked)** — `ospsuite` has no PyPI wheel; OSP runtime is .NET, Linux/Windows-only (macOS via Docker); Willmann/OSP power-law equations already mirrored | **P8**: Docker route for OSP; import verified by a physiology-table equivalence case vs `HumanPhysiology` defaults |
-| L15 | DeepDTA sequence-DTI general resolver | doc/12 row 2b, doc/07 P5 | **PLANNED** — ADMET-AI heads live on the hERG/CYP lanes; primary-target + remaining panel sites wait on this | **P5**: ship with an L2 calibration + equivalence case; a general resolver must beat class-prior monotonicity |
-| L16 | DILIsym / Breitwieser DILI-QSP deep mito-redox scaffolds | doc/12 row 4c / D7, doc/07 P6 | **PARTIAL-IN-HOUSE / PLANNED** — `organ/liver.py` already implements Mito ETC (adaptive mitogenesis), redox/GSH, hepatocyte-death ODEs flanking the cholestasis anchor; DILIsym is proprietary (no download), Breitwieser repo is CC-BY-NC-ND (equations not ported by policy) | **P6**: port an openly licensed mito/redox SBML scaffold and gate by an L2 equivalence case against the validated composition |
-| L17 | CMR Physiome nephron SBML (tubular transport) | doc/05 §1.5, doc/12 row 4b, doc/07 P7 | **PLANNED** — GFR baseline anchored via CKD-EPI 2021 (R-6); nephron depth-3 transport (reabsorption/secretion) pending | **P7**: SBML import; acceptance = tubular-secretion case matching L1 at a model surface |
-| L18 | Physiome / Reactome pathway SBML scaffolds | doc/12 row 3, doc/07 P7 | **PLANNED** — Huang & Ferrell 1996 MAPK is the wired default (R-5); physiome/Reactome scaffolds for non-MAPK pathways | **P7**: parse + steady-state equivalence per scaffold, gated like R-5 |
-| L19 | ORd main-path multi-ionic QT block (QTw) | doc/12 D2, doc/11 row 14b, doc/07 P9 | **PLANNED** — CiPA-v1 2017 retune vendored (`ohara-cipa-v1-2017.mmt`); current ORd lane is hERG-only fractional IKr cross-check (R-3) | **P9**: full main-path ICaL/INaL/IKs/IK1 block; acceptance = dofetilide/QT candidate spans both R-3 and the CiPA rank corollary |
-| L20 | DDI networks | doc/01 §5, doc/07 Phase 8 | **PLANNED-LATER** — single co-administered pair only | Phase 8; acceptance = interaction-flux mass balance |
-| L21 | Biologics / antibodies (FcRn, immunogenicity) | doc/01 §5, doc/07 Phase 8 | **PLANNED-LATER** | Phase 8 |
-| L22 | Pulmonary / reproductive / endocrine organ panels | doc/07 Phase 8 | **PLANNED-LATER** | Phase 8 |
-| L23 | 3D spatial / finite-element organ models | doc/01 §5 | **PLANNED-LATER (by design)** — lumped compartments; lobular zonation noted in doc/08 risk 4 | Post-baseline atlases |
-| L24 | Monolithic coupled-mode stabilization (small pathways) | doc/07 Phase 8 | **PLANNED-LATER** | complete `feedback_loop` (L11) equivalence boundary |
-| L25 | Measured plasma-profile GMFE benchmark (midazolam/warfarin/ciprofloxacin) | doc/07 Phase 1 D7 exit | **PENDING DATASET (doc/10 P0/P3)** — library-set profiles not yet vendored | dataset download + `≤ ~2×` exit check per compound |
-| L26 | GFR-only renal elimination | doc/05 §1.5, DISCLAIMER §2 | **BY DESIGN (baseline lane)** — `fidelity="baseline"` keeps linear-renal; full fidelity auto-engages tubular secretion (`cl_sec = CL_renal·(0.5 + 0.5·Pgp)`, disclosed) | CMR nephron under P7 (L17) adds depth to the engaged secretion term |
-| L27 | Predictive-regime reliability + measured/empirical overrides | DISCLAIMER §2, doc/07 D25/D26 | **DONE (DEFAULT)** — `drugos/reliability.py`: six regimes (weakest axis dominates) disclosed as `trust.reliability` (regime/label/reliability/basis/band_cv/disclaimer) on every run; regime CV feeds the D21 ensemble (`EnsembleConfig.cv`); `--measured`/`Measurements` override true parameters into the same full-fidelity pipeline (full PK → `measured_in_range_on_label`; measured zeros stay honest, engaged-and-disclosed terms); `--empirical`/`EmpiricalObservations` report observed-vs-predicted fold-error / within-2x rows in `trust.empirical_agreement` (disagreement = expected state, not a bug); `case_predictive_regime` (L1) | measured `fa`/`logP`/organ-flux scalars widen the partial-evidence surface; full-PK measured + on-label currently requires a scaffold anchor on dose/route |
+| L11 | Organ-feedback outer loop (clearance coupling) | doc/08 risk 5, `RunSpec.feedback_loop` | **DONE (DEFAULT-ENGAGED)** — coupled-clearance driver; full runs set one coupled re-run (pathway stays single-pass; the loop uses a fast liver/kidney/cardiac pass) | — |
+| L12 | CNS partitioning & grading anchoring | doc/07, R-4 | **WIRED (live)** — `case_admet_bbb_cns` pins the BBB_Martins kpu decision; the CNS *endpoint* line is structure-anchored only where chemotype support exists (`drugos.target.dti.cns_ic50_nm`), else the disclosed 0.20 class prior, masked from grading; `cns_grading_anchored` disclosed per run | haloperidol honored sub-µM (DRD2 top-match 0.67); desert queries stay at the prior |
+| L13 | Non-hERG off-target resolution (panel) | doc/10, doc/12 D10 | **WIRED (live)** — head lanes re-score hERG + CYP2D6/3A4/2C9 inhibitors through the corpus-calibrated P→KD curve; the ChEMBL kNN resolver (row 2b) re-binds mapped sites with chemotype support; without support the site keeps its class prior, named in `no_public_data_sites` | LOO calibration (`case_dti_resolver_calibration`): per-target positive correlation, tight scatter, band-clamped |
+| L14 | Willmann allometric physiology | doc/10, doc/12 row 1c / D4 | **WIRED** — `drugos.pk.physiology.build_human`/`HumanPhysiology`; `case_willmann_allometric_physiology` pins 70 kg reference self-consistency (Ye 2016), per-organ Willmann (2007) exponents, sex factors, BSA scaling, CO scaling, impairment modifiers | PHYS-L2 (gate) |
+| L15 | ChEMBL kNN general DTI resolver | doc/12 row 2b, D10 | **WIRED** — `predict_kd_nm`/`top_tanimoto` with the `MIN_NEIGHBOR_TANIMOTO` evidence gate; `resolve_offtarget_panel` re-binds supported sites, `no_public_data_sites` names the rest; never invents potency beyond the recorded band | leave-one-molecule-out calibration aboard the vendored snapshot (DTI-L2, gate) |
+| L16 | Mitochondrial/redox DILI axes | doc/12 row 4c / D7 | **WIRED** — `organ/liver.py` mitochondrial ETC (adaptive mitogenesis), redox/GSH, hepatocyte-death ODEs flanking the cholestasis anchor; `case_mito_redox_dili` pins ETC block ↔ redox depletion ↔ ALT-graded death | MITO-L2 (gate) |
+| L17 | Nephron tubular transport | doc/05 §1.5, doc/12 row 4b | **WIRED** — `organ.nephron.nephron_handling`: proximal reabsorption / transporter-mediated secretion kinetics, feeder of the engaged renal-elimination lane; `case_nephron_tubular_transport`; GFR baseline anchored via CKD-EPI 2021 (R-6) | NEPH-L2 (gate) |
+| L19 | ORd main-path multi-ionic QT block (QTw) | doc/12 D2, doc/11 | **WIRED** — CiPA-v1 2017 retune vendored (`data/models/ohara-cipa-v1-2017.mmt`) as `organ.cardiac_ap.cipa_apd90`; the ORd lane covers ICaL/INaL/IKs/IK1 block; `case_ord_multi_ionic_qt` spans the R-3 axis and the CiPA rank corollary | ORD-L19 (gate) |
+| L25 | Published-PK endpoint GMFE benchmark | doc/12 §5 PK-GMFE-L25; `data/benchmarks/published_pk.json` | **WIRED (live)** — `case_pk_gmfe_endpoints` certifies endpoint geometry over published PK parameter bands (CL, t½, Fa, fe, Vss): 5 compounds, 13 compound–metric pairs across the L3 Tier-1 set; pooled GMFE 1.296, APE 58.0 %, 12/13 within 2× | band check per pair; single disclosed outlier acetaminophen t½ (2.5×) carried in the case verdict |
+| L26 | GFR-only renal elimination | doc/05 §1.5, DISCLAIMER §2 | **BY DESIGN (baseline lane)** — `fidelity="baseline"` keeps linear-renal; full fidelity auto-engages tubular secretion (`cl_sec = CL_renal·(0.5 + 0.5·Pgp)`, disclosed) | the nephron lane (L17) adds depth to the engaged secretion term |
+| L27 | Predictive-regime reliability + measured/empirical overrides | DISCLAIMER §2, doc/07 | **DONE (DEFAULT)** — `drugos/reliability.py`: six regimes (weakest axis dominates) disclosed as `trust.reliability` (regime/label/reliability/basis/band_cv/disclaimer) on every run; regime CV feeds the D21 ensemble (`EnsembleConfig.cv`); `--measured`/`Measurements` override true parameters into the same full-fidelity pipeline (full PK → `measured_in_range_on_label`; measured zeros stay honest, engaged-and-disclosed terms); `--empirical`/`EmpiricalObservations` report observed-vs-predicted fold-error / within-2x rows in `trust.empirical_agreement` (disagreement = expected state, not a bug); `case_predictive_regime` (L1) | measured `fa`/`logP`/organ-flux scalars widen the mid-evidence surface; full-PK measured + on-label requires a scaffold anchor on dose/route |
 
 ## 7. Full-Chain Trust & End-to-End Verification Mechanism
 
@@ -372,11 +390,11 @@ return value is emitted as the **`trust`** section of the JSON contract
 | `fidelity` | `"full"` (default: every realism term engaged with disclosed auto-anchors) or `"baseline"` (explicit disclosed opt-out that keeps the validated linear lane) |
 | `policy` | G5 no-silent-fallback statement: every admitted source is named in this record |
 | `anchors_wired` | Production anchors actually bound into this run: CKD-EPI 2021 GFR (R-6) and the GCDCA bile-acid cholestasis PBK (R-7) are always wired; the ADMET-AI BBB_Martins brain-partition head (R-4) is disclosed whenever an ADMET prediction is present; the corpus-calibrated hERG P→KD sieve (R-8) whenever the hERG head is present |
-| `cns_grading_anchored` | Whether the CNS *endpoint* line is anchored by an explicit `cns_ic50_nm` (else 0.20 class prior, masked from grading) |
+| `cns_grading_anchored` | Whether the CNS *endpoint* line is anchored by a chemotype-supported `cns_ic50_nm` (else 0.20 class prior, masked from grading) |
 | `mechanism_terms_engaged` | Which realism terms are active for this run (tubular secretion, biliary/EHC, gut-wall extraction, saturable MM hepatic, per-CYP kinetics, TMDD, skin layers, sympathetic branch, immune DILI, feedback loop, ACAT SI, SC/IM depot — see §6 L1–L11); non-empty in every `fidelity="full"` run |
 | `mechanism_terms_degraded` | Which terms could **not** be engaged and why (route-inapplicable or missing-route terms in a baseline run). Empty in a full run — a full run whose terms would be missing instead raises `RealismError` (no silent degradation, G5) |
 | `estimates` | Per-term auto-anchor basis lines (sorted, term → basis) for the values `_engage_full_fidelity` synthesized (MM Vmax/Km, tubular secretion, biliary fraction, gut-wall Eg, ACAT segments, feedback loop, SC/IM ka, skin layers, immune-DILI IC50, sympathetic null IC50, TMDD site) |
-| `class_prior_sites` | Target sites still resolved by class priors (corpus/DTI coverage gaps), sorted |
+| `no_public_data_sites` | Target sites resolved by class priors because the chemotype-desert / corpus-coverage gap gives them no structure support, sorted |
 | `admet_ml_estimates` | Which ADMET-AI heads contributed (all non-`raw` populated fields), or `None` if the run is ADMET-free |
 | `reliability` | Predictive-regime disclosure (DISCLAIMER §2, §7.3): `regime`, `label`, `reliability`, `basis`, `band_cv` (recommended parameter-ensemble CV), `disclaimer` |
 | `empirical_agreement` | Present when observed clinical data are supplied (`EmpiricalObservations`): per-endpoint `fold_error` / `within_2x` rows plus a written policy that disagreement with empirical data is the expected state of the mechanistic model, not a bug |
@@ -396,9 +414,8 @@ return value is emitted as the **`trust`** section of the JSON contract
   deterministic fake predictor so every fidelity branch (default panel,
   full-realism terms, mixed-confidence priors, ADMET-free run, BBB-anchored vs
   masked CNS) is branch-covered inside the unit suite.
-- The trust record is branch-covered in both lanes; a future wired model
-  release (P5–P9) must extend `anchors_wired` through its own L2 equivalence
-  case (G4 factory rule).
+- The trust record is branch-covered in both lanes; any anchor admitted to
+  `anchors_wired` arrives with its own L2 equivalence case (G4 factory rule).
 
 ### 7.3 Predictive-regime reliability & true-parameter overrides (DISCLAIMER §2)
 
@@ -411,14 +428,14 @@ least supported axis):
 
 | Axis | Evidence |
 |---|---|
-| Chemistry | likely. Measured full PK (fup + hepatic + renal clearance) = strongest; partial measured PK/absorption = middle; a name-anchored benchmark scaffold solidifies only if corroborated by measurements; otherwise machine-predicted chemistry = weakest |
+| Chemistry | likely. Measured full PK (fup + hepatic + renal clearance) = strongest; some measured PK/absorption = middle; a name-anchored benchmark scaffold solidifies only if corroborated by measurements; otherwise machine-predicted chemistry = weakest |
 | Route | On-label = the scaffold's validated route; off-label = any other route |
-| Dose | Inside the scaffold's validated reference window `[0.5×, 2×]` vs extrapolated outside it |
+| Dose | Inside the scaffold's validated reference window `[0.5×, 2×]` vs outside it |
 
-Regimes, weakest → strongest, each with a recommended parameter-ensemble CV
-(`band_cv`) that widens when evidence weakens — `novel_molecule` (0.60) <
-`partial_evidence` (0.45) < `validated_offlabel_route` (0.50) <
-`validated_extrapolated_dose` (0.35) < `validated_in_range_on_label` (0.20) <
+Six regimes, weakest → strongest, each with a recommended parameter-ensemble
+CV (`band_cv`) that widens when evidence weakens: `novel_molecule` (0.60),
+the mid-evidence chemistry regime (0.45), `validated_offlabel_route` (0.50),
+`validated_extrapolated_dose` (0.35), `validated_in_range_on_label` (0.20),
 `measured_in_range_on_label` (0.15).  The regime CV flows into the D21
 parameter-ensemble uncertainty stage when `EnsembleConfig.cv` is left at
 its `None` default, keeping disclosed reliability and the reported
@@ -463,7 +480,7 @@ cases.
   Nat Mach Intell 2024.
 - Du F, et al. *hERG Central.* J Chem Inf Model 2022 (Harvard Dataverse
   doi:10.7910/DVN/7BVDG8).
-- Wilhelms M, et al. / CiPA in-silico guidance — multi-channel ORd use (P9).
+- Wilhelms M, et al. / CiPA in-silico guidance for multi-channel ORd use.
 - Mirams G, et al. Myokit: a framework for cardiac cell modelling
   (myokit.org), BSD-3.
 - Huang CY, Ferrell JE Jr. *Ultrasensitivity in the mitogen-activated protein
@@ -484,3 +501,7 @@ cases.
 - de Bruijn V, Rietjens IMCM. *Mechanistic insights on the role of the
   Bile Salt Export Pump in drug-induced cholestasis...* Arch Toxicol 2024;98:
   3077-3095. doi:10.1007/s00204-024-03775-6 (CC BY 4.0 — R-7).
+- Willmann S, et al. *Physiological model for simulating gastrointestinal
+  transit and drug absorption in rats and humans.* J Pharmacokinet
+  Pharmacodyn 2003;30:109-24 (allometric power laws embedded by the
+  PK-Sim population module — row 1c, D4).

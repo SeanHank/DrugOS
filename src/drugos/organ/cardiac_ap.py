@@ -31,8 +31,24 @@ import numpy as np
 from drugos.organ.base import NDArray
 
 _MODEL_FILE = Path(__file__).resolve().parents[3] / "data" / "models" / "ohara-2011.mmt"
+_CIPA_MODEL_FILE = (
+    Path(__file__).resolve().parents[3] / "data" / "models" / "ohara-cipa-v1-2017.mmt"
+)
 
 Runner = Callable[[float], tuple[NDArray, NDArray]]
+CipaRunner = Callable[[dict[str, float]], tuple[NDArray, NDArray]]
+
+#: The six current systems the ORd-CiPA-v1-2017 multi-ionic lane can block
+#: concurrently, mapped to the literal conductance/permeability that realizes
+#: the block (scaled by ``1 - fraction`` at the model's literal).
+CIPA_BLOCKABLE_CONSTANTS: dict[str, str] = {
+    "IKr": "ikr.gKr",
+    "IKs": "iks.gKs",
+    "IK1": "ik1.gK1",
+    "Ito": "ito.gto",
+    "INaL": "inal.gNaL",
+    "ICaL": "ical.PCa_base",
+}
 
 
 def _import_myokit() -> Any:
@@ -144,9 +160,116 @@ def ord_apd90(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class MultiIonicResult:
+    """APD90 outcome of a concurrent multi-ionic block in ORd-CiPA-v1-2017.
+
+    ``block_map`` holds the applied fractional block per current system
+    (subset of :data:`CIPA_BLOCKABLE_CONSTANTS`); the two APD90 columns are the
+    un-blocked baseline and the co-blocked run, and ``delta_apd90_ms`` is the
+    net effect of the concurrent block.  The net effect is *computed* by the
+    action-potential model, never assumed: late-INa or ICaL co-block relieves
+    part of an IKr-driven prolongation while IKs/IK1 co-block adds to it,
+    mirroring the CiPA multi-current net-signal logic.
+    """
+
+    block_map: dict[str, float]
+    apd90_base_ms: float
+    apd90_block_ms: float
+    delta_apd90_ms: float
+
+    def to_dict(self) -> dict[str, float]:
+        return {
+            "apd90_base_ms": self.apd90_base_ms,
+            "apd90_block_ms": self.apd90_block_ms,
+            "delta_apd90_ms": self.delta_apd90_ms,
+        }
+
+
+def _validate_block_map(block_map: dict[str, float]) -> None:
+    unknown = sorted(set(block_map) - set(CIPA_BLOCKABLE_CONSTANTS))
+    if unknown:
+        raise ValueError(
+            f"unknown current system(s) {unknown}; "
+            "blockable currents: " + ", ".join(sorted(CIPA_BLOCKABLE_CONSTANTS))
+        )
+    for name, frac in block_map.items():
+        if not 0.0 <= frac <= 1.0:
+            raise ValueError(f"block fraction for {name} must be within [0, 1]")
+
+
+def _load_and_run_cipa(
+    model_path: Path,
+    block_map: dict[str, float],
+    cell_mode: int,
+    pre_ms: float,
+    run_ms: float,
+    log_interval_ms: float,
+) -> tuple[NDArray, NDArray]:
+    """Run one logged, paced beat of ORd-CiPA-v1-2017 under a multi-ionic block."""
+    _validate_block_map(block_map)
+    mkm = _import_myokit()
+    model, protocol, _ = mkm.load(str(model_path))
+    sim = mkm.Simulation(model, protocol)
+    sim.set_constant("cell.mode", cell_mode)
+    for name, frac in block_map.items():
+        if frac <= 0:
+            continue
+        var = CIPA_BLOCKABLE_CONSTANTS[name]
+        base = float(model.get(var).value())
+        sim.set_constant(var, base * (1.0 - frac))
+    sim.pre(pre_ms)
+    data = sim.run(run_ms, log=["engine.time", "membrane.V"], log_interval=log_interval_ms)
+    t = np.asarray(data["engine.time"], dtype=float)
+    v = np.asarray(data["membrane.V"], dtype=float)
+    return t, v
+
+
+def cipa_apd90(
+    block_map: dict[str, float],
+    *,
+    runner: CipaRunner | None = None,
+    cell_mode: int = 0,
+    pre_ms: float = 30_000.0,
+    run_ms: float = 1500.0,
+    log_interval_ms: float = 0.05,
+) -> MultiIonicResult:
+    """Net APD90 of a concurrent multi-ionic block in ORd-CiPA-v1-2017.
+
+    Runs the un-blocked model and the co-blocked model on the same pacing and
+    returns the net-effect prolongation.  ``block_map`` may be empty (control
+    run) or any subset of the six blockable current systems.
+    """
+    block_map = dict(block_map)
+    _validate_block_map(block_map)
+    run = (
+        runner
+        if runner is not None
+        else (
+            lambda bm: _load_and_run_cipa(
+                _CIPA_MODEL_FILE, bm, cell_mode, pre_ms, run_ms, log_interval_ms
+            )
+        )
+    )
+    t0, v0 = run({})
+    tb, vb = run(block_map)
+    base = apd90_from_trace(t0, v0)
+    blocked = apd90_from_trace(tb, vb)
+    return MultiIonicResult(
+        block_map=block_map,
+        apd90_base_ms=base,
+        apd90_block_ms=blocked,
+        delta_apd90_ms=blocked - base,
+    )
+
+
 __all__ = [
     "Apd90Result",
+    "CIPA_BLOCKABLE_CONSTANTS",
+    "CipaRunner",
     "Runner",
+    "MultiIonicResult",
     "apd90_from_trace",
+    "cipa_apd90",
     "ord_apd90",
 ]

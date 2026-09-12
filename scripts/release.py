@@ -7,30 +7,43 @@ sync, and drives a release:
 
 Subcommands:
 
-  gates                G1-G6 quality gates (lint, types, coverage, validation,
-                       fallback audit, no-deferral audit), logging to
-                       ``build/quality_gate.log``. Hard-fails on any violation.
-  fallback-audit       Scan every ``except`` handler in ``src/drugos`` against
-                       the pinned allowlist
-                       (``scripts/fallback_allowlist.json``). A handler must
-                       either re-raise or return an explicit error value; a
-                       silent swallow is a hard failure, and any drift in the
-                       handler inventory fails until the allowlist is updated
-                       intentionally.
-  marker-audit         Scan every scanned code and doc file for any occurrence
-                       of the hard or soft marker set (G6). Any occurrence at
-                       any count is a hard failure: there is no allowance file,
-                       no whitelist, no pinned inventory and no hard-coded
-                       permission to retain a marker of any kind.
-  version              Print the canonical version (authoritative source:
-                       ``version.py``); verifies ``pyproject.toml`` agrees.
-  status               Re-sync validation counts, the ``doc/09`` status block
-                       and ``build/release_status.json`` from the last gate
-                       run.
-  release (default)    gates (unless ``--no-gates``) -> project-wide version
-                       sync from an explicit ``--version YYYY.M.V`` (never
-                       auto-bumped) -> validation/status sync ->
-                       ``release_status.json``.
+    gates               G1-G7 quality gates (lint, types, coverage, validation,
+                        fallback audit, no-deferral audit, docs-truth audit),
+                        logging to
+                        ``build/quality_gate.log``. Hard-fails on any violation.
+    fallback-audit      Scan every ``except`` handler in ``src/drugos`` against
+                        the pinned allowlist
+                        (``scripts/fallback_allowlist.json``). A handler must
+                        either re-raise or return an explicit error value; a
+                        silent swallow is a hard failure, and any drift in the
+                        handler inventory fails until the allowlist is updated
+                        intentionally.
+    marker-audit        Scan every scanned code and doc file for any occurrence
+                        of the hard or soft marker set (G6). Any occurrence at
+                        any count is a hard failure: there is no allowance file,
+                        no whitelist, no pinned inventory and no hard-coded
+                        permission to retain a marker of any kind.
+    docs-audit           Docs-truth audit (G7): every scanned document must
+                        describe only realized, wired behaviour.  Two layers:
+                        (a) the unrealized-status vocabulary (planned, blocked,
+                        deferred, partial, pending, candidate, future, roadmap,
+                        out-of-scope, not-yet, not-downloaded, and the rest of
+                        the set) must be absent from doc text outside the
+                        citation surface; (b) every back-ticked identifier and
+                        ``case_*`` name in doc/12 §1/§5/§6 must resolve to a
+                        real ``src/drugos`` symbol or a registered validation
+                        case, and every back-ticked ``data/...`` path must be listed in
+                        the pinned manifest.  A document that claims or
+                        spans anything not fully realized is a hard failure.
+   version              Print the canonical version (authoritative source:
+                        ``version.py``); verifies ``pyproject.toml`` agrees.
+   status               Re-sync validation counts, the ``doc/09`` status block
+                        and ``build/release_status.json`` from the last gate
+                        run.
+   release (default)    gates (unless ``--no-gates``) -> project-wide version
+                        sync from an explicit ``--version YYYY.M.V`` (never
+                        auto-bumped) -> validation/status sync ->
+                        ``release_status.json``.
 
 All document updates are idempotent; ``--dry-run`` prints the plan without
 writing. There is no silent fallback of any form inside this script either.
@@ -67,6 +80,7 @@ KNOWN_COMMANDS = {
     "gates",
     "fallback-audit",
     "marker-audit",
+    "docs-audit",
     "version",
     "status",
     "release",
@@ -401,6 +415,269 @@ def no_deferral_audit() -> list[str]:
     return violations
 
 
+# ---------------------------------------------------------------------------
+# G7 — docs-truth audit
+#
+# (a) The unrealized-status vocabulary.  Every scanned document must describe
+#     only behavior that is fully realized and wired in this repository.  A
+#     claim that something is planned, blocked, deferred, partial, pending, a
+#     candidate, out of scope, or otherwise not yet fully realized or
+#     connected is a hard failure: the docs are the shipped product's
+#     description, and they are permitted to describe nothing that is not
+#     shipped.  Stems are matched with any word continuation so every form is
+#     caught ("planned", "planning", "candidates", "not-yet-on-disk" ...).
+#     The citation/license surface is read-only attribution: a cited work's
+#     real title or license text is not a claim about this product and is
+#     exempt, exactly as in G6.
+# (b) Claim backing.  Every back-ticked identifier, ``case_*`` name and
+#     ``data/...``/``src/...`` path in doc/12 must resolve to a real
+#     ``src/drugos`` symbol, a registered validation case, or a manifest-pinned
+#     file.  A documented claim must be backed by the artifact that realizes
+#     it; a shipped claim pointing at nothing real fails the gate.
+# ---------------------------------------------------------------------------
+
+UNREALIZED_TOKENS = (
+    "planned",
+    "planning",
+    "roadmap",
+    "blocked",
+    "defer",
+    "deferred",
+    "deferral",
+    "partial",
+    "pending",
+    "candidate",
+    "future",
+    "await",
+    "unreleased",
+    "not-yet",
+)
+UNREALIZED_PHRASES = (
+    "out of scope",
+    "out-of-scope",
+    "not in scope",
+    "not in this release",
+    "not yet",
+    "not on disk",
+    "not acquired",
+    "not downloaded",
+    "downloaded at runtime",
+    "to be implemented",
+    "to be realized",
+    "to be added",
+    "to be shipped",
+    "to be wired",
+    "to be evaluated",
+    "work in progress",
+    "works in progress",
+    "in progress",
+    "will be added",
+    "will be implemented",
+    "will be shipped",
+    "will be wired",
+    "will ship",
+    "will land",
+    "later release",
+    "later phase",
+    "later phases",
+    "a later",
+    "future release",
+    "future work",
+    "phase 8",
+    "planned-later",
+    "planned for",
+    "planned release",
+    "release track",
+    "P5",
+    "P6",
+    "P7",
+    "P8",
+    "P9",
+    "PLANNED-LATER",
+    "NOT-DOWNLOADED",
+    "WIRED (partial)",
+    "PARTIAL-IN-HOUSE",
+    "PENDING DATASET",
+    "PLANNED (blocked)",
+    "PARTIAL —",
+    "部分落实",
+    "计划内",
+    "简化落实",
+)
+UNREALIZED_TOKEN_RE = {
+    tok: re.compile(rf"\b{re.escape(tok)}\w*\b", re.IGNORECASE) for tok in UNREALIZED_TOKENS
+}
+def _compile_unrealized_phrase(phrase: str) -> re.Pattern[str]:
+    """Compile one unrealized-status phrase, tolerant of a hyphen or space
+    between its words so hyphenated and spaced forms are both caught."""
+    parts = [re.escape(p) for p in phrase.split(" ")]
+    return re.compile(rf"\b{('[ -]?'.join(parts))}\b", re.IGNORECASE)
+
+
+UNREALIZED_PHRASE_RES = [_compile_unrealized_phrase(p) for p in UNREALIZED_PHRASES]
+
+ALLOWED_SCIENTIFIC_SYMBOLS = frozenset(
+    {
+        # Closed set of universal physical/pharmacology symbols that the docs
+        # use as parameter names without a one-to-one code symbol.
+        "kd", "kon", "koff", "km", "ki", "ic50", "ec50", "auc", "cmax", "tmax",
+        "t1/2", "cl", "vmax", "fa", "fup", "logp", "bsa", "egfr", "scr", "gfr",
+        "alt", "ast", "uln", "atp", "gsh", "ros", "qt", "qtc", "qtw", "cv",
+        "vs", "qs",
+    }
+)
+
+
+def unrealized_markers_in(line: str) -> list[str]:
+    """The unrealized-status markers present on one line of doc text."""
+    hits: list[str] = []
+    for tok in UNREALIZED_TOKENS:
+        if UNREALIZED_TOKEN_RE[tok].search(line):
+            hits.append(tok)
+    for phrase, pat in zip(UNREALIZED_PHRASES, UNREALIZED_PHRASE_RES, strict=True):
+        if pat.search(line):
+            hits.append(f"phrase {phrase!r}")
+    return hits
+
+
+def _doc_scope_files() -> list[tuple[str, Path]]:
+    """The doc set the G7 docs-truth audit scans (markdown only)."""
+    return [(kind, path) for kind, path in _audit_scope_files() if kind == "doc"]
+
+
+def _manifest_paths() -> set[str]:
+    manifest = json.loads(DATA_MANIFEST.read_text(encoding="utf-8"))
+    return {entry["path"] for entry in manifest["files"]}
+
+
+def _src_identifiers() -> set[str]:
+    """Every identifier appearing in ``src/drugos`` source, lowercased."""
+    ids: set[str] = set()
+    for path in PACKAGE.rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        for tok in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", text):
+            ids.add(tok.lower())
+    return ids
+
+
+def _backtick_spans(path: Path) -> list[tuple[int, str]]:
+    text = path.read_text(encoding="utf-8")
+    citation_lines = _citation_surface_line_numbers(text)
+    spans: list[tuple[int, str]] = []
+    for lineno, line in enumerate(text.splitlines(), 1):
+        if lineno in citation_lines:
+            continue
+        for m in re.finditer(r"`([^`]+)`", line):
+            spans.append((lineno, m.group(1).strip()))
+    return spans
+
+
+def verify_doc_claims() -> list[str]:
+    """Positive claim-backing check over the back-ticked claims in doc/12.
+
+    Every back-ticked identifier in doc/12 must resolve to a real
+    ``src/drugos`` symbol or a registered validation case; every back-ticked
+    ``data/...``/``src/...``/``*.py`` path must exist or be pinned in the
+    manifest.  Unresolved claims are hard violations: a documented, shipped
+    behaviour must point at the artifact that realizes it.
+    """
+    path = ROOT / "doc" / "12-production-models.md"
+    if not path.is_file():
+        return ["doc/12-production-models.md missing (G7 claim register absent)"]
+    text = path.read_text(encoding="utf-8")
+    case_init = (ROOT / "validation" / "cases" / "__init__.py").read_text(encoding="utf-8")
+    manifest_paths = _manifest_paths()
+    identifiers = _src_identifiers()
+    violations: list[str] = []
+    rel = "doc/12-production-models.md"
+
+    for lineno, content in _backtick_spans(path):
+        if not content:
+            continue
+        where = f"{rel}:{lineno}: claim `{content}`"
+        if content.startswith("data/"):
+            if content == "data/manifest.json":
+                continue
+            key = content[len("data/"):]
+            if key not in manifest_paths:
+                violations.append(f"{where} not listed in data/manifest.json")
+            continue
+        if content.startswith(("src/", "scripts/")):
+            if not (ROOT / content).is_file():
+                violations.append(f"{where} path does not exist")
+            continue
+        if "/" in content and content.endswith(".py"):
+            candles = [ROOT / content]
+            if content.startswith("drugos/"):
+                candles.append(PACKAGE / content[len("drugos/"):])
+            else:
+                candles.append(PACKAGE / content)
+            if not any(c.is_file() for c in candles):
+                violations.append(f"{where} path does not exist")
+            continue
+        if content.startswith("case_"):
+            case_file = ROOT / "validation" / "cases" / f"{content}.py"
+            if not case_file.is_file():
+                violations.append(f"{where} has no validation case module")
+            elif content not in case_init:
+                violations.append(f"{where} case exists but is not registered in "
+                                  "validation/cases/__init__.py")
+            continue
+        if content.startswith("drugos."):
+            parts = content.split(".")
+            ok = False
+            for split in range(len(parts), 1, -1):
+                mod = ".".join(parts[1:split])
+                base = PACKAGE / mod.replace(".", "/")
+                if (
+                    base.is_file()
+                    or base.with_suffix(".py").is_file()
+                    or (base / "__init__.py").is_file()
+                ):
+                    ok = True
+                    break
+            if not ok:
+                violations.append(f"{where} module path does not resolve in src/drugos")
+            continue
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", content):
+            low = content.lower()
+            if low in identifiers or low in ALLOWED_SCIENTIFIC_SYMBOLS:
+                continue
+            if len(content) >= 2:
+                violations.append(f"{where} identifier does not resolve in src/drugos")
+            continue
+    return violations
+
+
+def docs_truth_audit() -> list[str]:
+    """G7: every scanned document describes only realized, wired behaviour.
+
+    1. The unrealized-status vocabulary (planned, blocked, deferred, partial,
+       pending, candidate, future, roadmap, out-of-scope, not-yet,
+       not-downloaded, release-track, and the remaining set) is absent from
+       doc text outside the citation surface — a document may describe
+       nothing that is not shipped.
+    2. Every back-ticked claim in doc/12 resolves to a real ``src/drugos``
+       symbol, a registered validation case, or a manifest-pinned file.
+
+    There is no allowance file and no pinned inventory for either layer: any
+    occurrence at any count is a violation, because the docs are permitted to
+    describe only the fully realized system.
+    """
+    violations: list[str] = []
+    for kind, path in _doc_scope_files():
+        rel = path.relative_to(ROOT).as_posix()
+        text = path.read_text(encoding="utf-8")
+        citation_lines = _citation_surface_line_numbers(text) if kind == "doc" else set()
+        for lineno, line in enumerate(text.splitlines(), 1):
+            if lineno in citation_lines:
+                continue
+            for tok in unrealized_markers_in(line):
+                violations.append(f"{rel}:{lineno}: unrealized-status marker {tok!r}")
+    violations.extend(verify_doc_claims())
+    return violations
+
+
 def run_gates(use_xdist: bool = True) -> None:
     ensure_versions_consistent()
     GATE_LOG.parent.mkdir(parents=True, exist_ok=True)
@@ -455,6 +732,17 @@ def run_gates(use_xdist: bool = True) -> None:
             print("\n".join(f"  {v}" for v in deferrals))
             raise SystemExit("marker of a retained seam detected; refusing release")
         log.write("marker audit: clean (no markers in any scanned file)\n")
+
+    unrealized = docs_truth_audit()
+    with GATE_LOG.open("a", encoding="utf-8") as log:
+        if unrealized:
+            log.write("== docs-truth audit (G7) ==")
+            for v in unrealized:
+                log.write(f"  FAIL {v}\n")
+            print("DOCS-TRUTH AUDIT FAILED:")
+            print("\n".join(f"  {v}" for v in unrealized))
+            raise SystemExit("unrealized-status wording or unbacked claim detected; refusing release")
+        log.write("docs-truth audit: clean (every doc claim is realized, wired, and backed)\n")
         log.write("ALL GATES PASSED\n")
     print("ALL GATES PASSED")
     print("".join(GATE_LOG.read_text(encoding="utf-8").splitlines(keepends=True)[-25:]))
@@ -545,6 +833,7 @@ def sync_doc09_status(
         "G4 validation suite",
         "G5 fallback audit",
         "G6 marker audit",
+        "G7 docs-truth audit",
     ):
         text = re.sub(rf"- {re.escape(label)}: \w+", f"- {label}: {gates}", text, count=1)
     text = re.sub(
@@ -599,6 +888,21 @@ def cmd_marker_audit() -> int:
     print(
         "marker audit clean: no marker of any kind in any scanned file "
         "(no allowance file, no whitelist, no pinned inventory)"
+    )
+    return 0
+
+
+def cmd_docs_audit() -> int:
+    violations = docs_truth_audit()
+    if violations:
+        print("unrealized-status wording or unbacked claims in docs:")
+        for v in violations:
+            print(f"  {v}")
+        return 1
+    print(
+        "docs-truth audit clean: every doc claim is realized, wired, and backed "
+        "(no planned/blocked/deferred/partial/candidate/out-of-scope wording outside "
+        "the citation surface; every doc/12 back-tick resolves)"
     )
     return 0
 
@@ -705,6 +1009,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_fallback_audit()
     if args.cmd == "marker-audit":
         return cmd_marker_audit()
+    if args.cmd == "docs-audit":
+        return cmd_docs_audit()
     if args.cmd == "status":
         return cmd_status(args.dry_run)
     if args.cmd == "gates":

@@ -1,7 +1,7 @@
 # DrugOS Validation Report
 
-- Status: **PASS** (38/38 cases passed)
-- Generated: 2026-09-12 05:19 UTC
+- Status: **PASS** (45/45 cases passed)
+- Generated: 2026-09-12 11:28 UTC
 - DrugOS version: 2026.9.1
 - Interpreter: /opt/anaconda3/envs/drug_os/bin/python
 - Parallelism: parallel (8 worker processes)
@@ -79,6 +79,18 @@
 |  |  | dofetilide_at_ic50_delta_apd90_ms | 114.8 [30, 1000] ms | pass |
 |  |  | apd90_monotone_25_to_50_ms | 67.7 [0, 1000] ms | pass |
 |  |  | warfarin_control_delta_apd90_ms | 0 [-1e-06, 1e-06] ms | pass |
+| multi-ionic QTw cross-check (ORd-CiPA-v1-2017) | L3 | cipa_apd90_base_ms | 263 [200, 350] ms | pass |
+|  |  | IKr_0.5_delta_apd90_ms | 100.9 [60, 1000] ms | pass |
+|  |  | IKr0.5_INaL0.3_delta_apd90_ms | 80.4 [0, 95.85] ms | pass |
+|  |  | IKr0.5_INaL0.15_ICaL0.15_delta_apd90_ms | 83.65 [30, 95.85] ms | pass |
+| nephron tubular transport (segmental cascade, analytic limits) | L2 | fe_na_healthy | 0.009 [0.005, 0.02] fraction | pass |
+|  |  | urine_flow_ml_min | 1.125 [0.5, 3.75] ml/min | pass |
+|  |  | fe_x_pure_filtration | 1 [1, 1] fraction | pass |
+|  |  | cl_r_pure_filtration_ml_min | 125 [125, 125] ml/min | pass |
+|  |  | fe_x_net_reabsorption | 0.5 [0.5, 0.5] fraction | pass |
+|  |  | cl_r_net_reabsorption_ml_min | 62.5 [62.5, 62.5] ml/min | pass |
+|  |  | fe_x_net_secretion | 2.104 [1, 1e+06] fraction | pass |
+|  |  | cl_r_saturation_ratio_lo_hi | 1.939 [0, 2.104] fraction | pass |
 | ADMET-AI BBB_Martins -> CNS partition (R-4) | L2 | cns_kpu_brain_penetrant | 1 [1, 1] ratio | pass |
 |  |  | cns_kpu_brain_non_penetrant | 0.2 [0.2, 0.2] ratio | pass |
 |  |  | benchmark_no_admet_kpu_brain | 1 [1, 1] ratio | pass |
@@ -91,6 +103,14 @@
 |  |  | monotone_inhibition_in_occupancy | 1 [1, 1] flag | pass |
 |  |  | inhibited_fold_change_lte_1 | 0 [-1, 1] fold | pass |
 |  |  | readout_is_dual_phospho_erk | 1 [1, 1] flag | pass |
+| Second SBML scaffold: Rohwer 2000 PTS equivalence gate (L18, non-MAPK) | L2 | pts_species_full_resolution | 17 [17, 17] species (libsbml == spec) | pass |
+|  |  | pts_reactions_all_compiled | 10 [10, 10] reactions (no silent drop) | pass |
+|  |  | pts_distinct_from_mapk | 1 [1, 1] flag | pass |
+|  |  | pts_fixed_point_drift | 0 [0, 0.02] rel. drift (200h vs 400h) | pass |
+|  |  | pts_baseline_matches_equilated | 0.00116 [0, 0.02] fold | pass |
+|  |  | pts_monotone_in_donor_supply | 1 [1, 1] flag | pass |
+|  |  | pts_full_donor_depletion | 0.6187 [0, 0.8496] fold @ s=1 | pass |
+|  |  | mapk_default_lane_still_gated | 1 [1, 1] flag | pass |
 | CKD-EPI 2021 race-free GFR baseline (R-6) | L2 | egfr_male_60_scr1_pct2_5 | 86.16 [85, 92] mL/min/1.73 m2 | pass |
 |  |  | egfr_female_lower_same_scr | 64.5 [0, 86.16] mL/min/1.73 m2 | pass |
 |  |  | egfr_bsa_scaled_absolute | 98.22 [86.16, 112] mL/min | pass |
@@ -151,6 +171,54 @@
 |  |  | immune_weight_increases_dead | 0.68 [0.4101, 1] dead_frac @72h with immune_weight=1 | pass |
 |  |  | monotone_exposure_response | 0.666 [0, 0.6666] immune @72h (low exposure) | pass |
 |  |  | degenerate_immune_inputs_rejected | 3 [3, 3] count of rejected probes | pass |
+| ChEMBL fingerprint-kNN resolver calibration (L15/L13/L12) | L2 | pooled_leave_one_out_spearman | 0.741 [0.6, 1] rho | pass |
+|  |  | pooled_leave_one_out_pearson | 0.745 [0.6, 1] rho | pass |
+|  |  | pooled_within_2x_ic50_fraction | 0.314 [0.25, 1] frac | pass |
+|  |  | pooled_median_abs_delta_pchembl | 0.516 [0, 0.85] log10 units | pass |
+|  |  | panel_mapped_sites_resolved | 3 [3, 3] sites | pass |
+|  |  | no_public_data_sites_disclosed | 14 [14, 14] sites | pass |
+|  |  | cns_seam_supported_anchor_honored | 1 [1, 1] bool | pass |
+|  |  | cns_seam_desert_no_false_anchor | 1 [1, 1] bool | pass |
+|  |  | log_out_pearson_kcnh2 | 0.657 [0.3, 1] rho | pass |
+|  |  | log_out_pearson_cyp2d6 | 0.439 [0.3, 1] rho | pass |
+|  |  | log_out_pearson_cyp3a4 | 0.658 [0.3, 1] rho | pass |
+|  |  | log_out_pearson_cyp2c9 | 0.496 [0.3, 1] rho | pass |
+|  |  | log_out_pearson_abcb11 | 0.745 [0.3, 1] rho | pass |
+|  |  | log_out_pearson_slco1b1 | 0.411 [0.3, 1] rho | pass |
+|  |  | log_out_pearson_abcb1 | 0.644 [0.3, 1] rho | pass |
+|  |  | log_out_pearson_nr3c1 | 0.679 [0.3, 1] rho | pass |
+|  |  | log_out_pearson_esr1 | 0.768 [0.3, 1] rho | pass |
+|  |  | log_out_pearson_ar | 0.752 [0.3, 1] rho | pass |
+|  |  | log_out_pearson_nadh_dehydrogenase | 0.699 [0.3, 1] rho | pass |
+|  |  | log_out_pearson_drd2 | 0.726 [0.3, 1] rho | pass |
+|  |  | log_out_pearson_chrm1 | 0.707 [0.3, 1] rho | pass |
+|  |  | log_out_pearson_adra1a | 0.668 [0.3, 1] rho | pass |
+|  |  | log_out_pearson_oprm1 | 0.654 [0.3, 1] rho | pass |
+|  |  | log_out_pearson_hrh1 | 0.815 [0.3, 1] rho | pass |
+| Mito/redox/ATP-floor DILI axes (closed-form + end-to-end differential) | L2 | mito_empty_tuple_inert | 0 [0, 0] block | pass |
+|  |  | mito_zero_exposure_inert | 0 [0, 0] block | pass |
+|  |  | mito_single_hit_at_ic50 | 0.5 [0.5, 0.5] block (C==IC50 -> 0.5 Michaelis) | pass |
+|  |  | mito_worst_case_max | 0.8333 [0.8333, 0.8333] block (max across complexes) | pass |
+|  |  | redox_zero_ros | 0 [0, 0] ROS | pass |
+|  |  | redox_zero_gsh | 1 [1, 1] GSH frac | pass |
+|  |  | redox_zero_product | 0 [0, 0] ROS*GSH | pass |
+|  |  | redox_at_ic50_ros | 0.5 [0.5, 0.5] ROS | pass |
+|  |  | redox_at_ic50_gsh | 0.5 [0.5, 0.5] GSH frac | pass |
+|  |  | redox_at_ic50_net | 0.25 [0.25, 0.25] ROS*GSH | pass |
+|  |  | redox_floor_binds | 0.15 [0.15, 0.15] GSH frac (floor) | pass |
+|  |  | atp_full_block_at_floor | 0.2 [0.2, 0.2] ATP | pass |
+|  |  | atp_zero_block_supplied | 1 [1, 1] ATP | pass |
+|  |  | atp_half_block_closed_form | 0.68 [0.68, 0.68] ATP (0.2 + 0.8*0.6) | pass |
+|  |  | atp_adaptive_boost | 0.92 [0.92, 0.92] ATP (0.2 + 0.8*0.6*1.5) | pass |
+|  |  | atp_adaptive_inert_at_full_block | 0.2 [0.2, 0.2] ATP (shortfall zero -> adaptive inert) | pass |
+|  |  | stress_lone_cholestasis | 0.5 [0.5, 0.5] stress | pass |
+|  |  | stress_all_axes | 1 [1, 1] stress | pass |
+|  |  | stress_immune_inert_at_default | 0.25 [0.25, 0.25] stress (immune weight 0) | pass |
+|  |  | degenerate_mito_redox_rejected | 3 [3, 3] count | pass |
+|  |  | mito_axis_buried_atp | 0.2322 [0, 0.95] min ATP frac (inert >= mito + 0.05) | pass |
+|  |  | mito_axis_increases_dead | 0.4927 [1e-06, 1] dead_frac @72h (mito engaged) | pass |
+|  |  | redox_axis_increases_dead | 0.3244 [1e-06, 1] dead_frac @72h (redox engaged) | pass |
+|  |  | mito_death_monotone_in_exposure | 0.4666 [0, 0.4927] dead_frac @72h (half exposure) | pass |
 | ACAT-lite multi-segment SI dissolution/absorption (model default-off; full fidelity auto-engages) | L2 | single_si_baseline | 14 [0, 100] si index present | pass |
 |  |  | mass_conservation_3seg | 100 [98, 102] mg | pass |
 |  |  | solubility_caps_per_segment | 39.8 [5, 100] mg feces | pass |
@@ -192,6 +260,23 @@
 |  |  | empirical_agreement_rows_reported | 2 [2, 2] count | pass |
 |  |  | lowest_empirical_fold_error | 0.5607 [0.01, 2] ratio | pass |
 |  |  | regime_cv_reaches_uncertainty_stage | 1 [1, 1] count | pass |
+| Willmann 2007 allometric physiology (power-law + circulation closure) | L2 | ref_male_all_volume_ratios | 0 [0, 1e-09] spread | pass |
+|  |  | ref_male_flow_ratio_gte | 0.9905 [0, 1e+06] max flow/ref-flow | pass |
+|  |  | ref_male_flow_ratio_closed_form | 0.9905 [0.9905, 0.9905] max flow/ref-flow (CI x BSA / ref CO) | pass |
+|  |  | vc_return_equals_co | 0 [0, 0] L/min diff | pass |
+|  |  | lung_flow_equals_co | 0 [0, 0] L/min diff | pass |
+|  |  | willmann_law_140kg_male | 0 [0, 1e-09] max rel. volume err | pass |
+|  |  | female_sex_factor_anatomy | 0 [0, 1e-09] max rel. volume err | pass |
+|  |  | female_co_ci_bsa | 0.9982 [0.9982, 0.9982] CO/(CI*BSA) = vena-cava closure factor | pass |
+|  |  | flow_doubling_exact_ratio | 0 [0, 1e-09] max flow-ratio err | pass |
+|  |  | heart_failure_0.8x_co | 1.11e-16 [0, 1e-09] abs err | pass |
+|  |  | mild_hepatic_liver_volume | 0.8 [0.8, 0.8] ratio | pass |
+|  |  | moderate_hepatic_liver_volume | 0.65 [0.65, 0.65] ratio | pass |
+|  |  | gfr_male_ml_min | 125 [125, 125] mL/min | pass |
+|  |  | gfr_female_ml_min | 96.8 [96.8, 96.8] mL/min | pass |
+| Published-PK endpoint GMFE/APE benchmark (L25) | L3 | pooled_gmfe_endpoint_fold | 1.296 [1, 2] x | pass |
+|  |  | mean_absolute_percent_error | 58 [0, 100] % | pass |
+|  |  | pairs_within_2x_fraction | 0.9231 [0.7692, 1] frac | pass |
 
 ## Evidence levels
 
@@ -205,8 +290,8 @@ Results are graded by how much epistemic weight they carry (doc/08 §1.1-1.4 tie
 
 Per-level status:
 
-- **L3** (Empirically anchored (Tier 1)): 10/10 cases green.
-- **L2** (Analytic / mechanistic limit (Tier 2)): 21/21 cases green.
+- **L3** (Empirically anchored (Tier 1)): 12/12 cases green.
+- **L2** (Analytic / mechanistic limit (Tier 2)): 26/26 cases green.
 - **L1** (Internal consistency / CI (Tier 3)): 7/7 cases green.
 
 ## Notes & limitations
@@ -232,8 +317,11 @@ Per-level status:
 - **D24 prospective rerun fidelity (dofetilide QTc)**: Repeated identical runs agree to 0.0e+00 in risk and keep verdict 'Elevated composite risk: monitor on the flagged endpoint(s)'; an independent female-70 profile also sustains the high-QT regime (dofetilide QT 0.528, driver qt).  Re-baselined under full fidelity: the auto-engaged native TMDD sink at the hERG site (doc/12 §7.2) lowers free cardiac exposure against the linear lane, moving dofetilide QT from ~0.85 to ~0.5 while it stays the flagged driver.  Basis: reproducibility is the precondition of the runbook; the QTc band itself is anchored by the L3 dofetilide Tier-1 case (see case_cardiac_qtc).
 - **R literature-PK cross-check (R-1)**: worst |CL_r - CL_py|/CL_py over midazolam / acetaminophen / warfarin / ciprofloxacin / dofetilide: 1.60e-15 (ciprofloxacin); midazolam=r:agree / acetaminophen=r:agree / warfarin=r:agree / ciprofloxacin=r:agree / dofetilide=r:agree; method-of-residuals two-comp fits: 0/5
 - **cardiac AP cross-check (ORd/IKr)**: ORd 2011 (myokit, endo, 50 pre-paces @1 Hz): baseline APD90=266.3 ms; delta-APD90 @25% block=47.1 ms, @50% block (measured-IC50 concentration)=114.8 ms, control (0% block)=0.0000 ms; monotone +67.7 ms between block levels; warfarin control confirmed zero prolongation (matches encoder ordering warfarin 0.017 ms << dofetilide 20.2 ms)
+- **multi-ionic QTw cross-check (ORd-CiPA-v1-2017)**: ORd-CiPA-v1-2017 (myokit, endo, 30 s pre-pace @1 Hz): baseline APD90=263.0 ms; delta-APD90 hERG-only (50% IKr block)=100.9 ms; with 30% late-INa co-block=80.4 ms; combined IKr+INaL+ICaL block=83.7 ms; late-INa/ICaL co-block relieves part of the hERG-driven prolongation (net multi-current effect computed by the CiPA action-potential model, mirroring the CiPA score logic); direction matches the algebraic encoder and the R-3 ORd-2011 anchor
+- **nephron tubular transport (segmental cascade, analytic limits)**: healthy four-segment cascade: FE_Na=0.0090 urine=1.12 ml/min (≈0.9% of GFR); mass balance residual=0.00e+00 nmol/min; pure filtration FE_x=1.0000 Cl_renal=125.0 ml/min (= GFR); 50% passive reabsorption FE_x=0.5000 Cl_renal=62.5 ml/min; saturable secretion FE_x=2.104 Cl_renal=263.0 ml/min; 10x concentration → FE_x=1.939 (saturation roll-off, the renal-DDI net-effect flag)
 - **ADMET-AI BBB_Martins -> CNS partition (R-4)**: BBB_Martins P=0.9 -> kpu_brain 1.00, P=0.1 -> 0.20 (source: ADMET-AI BBB_Martins head); restricted brain peak = 20% of penetrant; CNS grades 0 <= 0; baseline (no ADMET-AI) kpu=1.00 untouched — benchmark anchors unchanged
 - **Huang/Levchenko SBML MAPK cascade integration (R-5)**: parsed 22 species / 20 reactions from BIOMD0000000009 (volume 4.0e-12 L); drug-free PP_K steady state 0.982; occupancy monotone 0.6->0.917, 0.9->0.005, 1.0->0.000; full-signal fold-change 0.000 (inhibition).
+- **Second SBML scaffold: Rohwer 2000 PTS equivalence gate (L18, non-MAPK)**: Rohwer PTS: 17 species / 10 reactions (libsbml 17/10); pyruvate drift 200h->400h 0.0e+00; donor sweep [0.9996, 0.9972, 0.993, 0.6187]; MAPK sweep [1.0006, 0.9346, 0.0055, 0.0]
 - **CKD-EPI 2021 race-free GFR baseline (R-6)**: CKD-EPI 2021 race-free: male 60 y SCR 1.0 -> 86.2 mL/min/1.73 m2 (CKD-2 band); female same Scr 64.5; BSA-scaled 98.2 mL/min; Scr-carrying profile gfr=98.2 mL/min; no-Scr default untouched (125.0 mL/min).
 - **Bile-acid cholestasis PBK (R-7)**: de Bruijn & Rietjens (2024) bile-acid PBK reproduced at 1 uM free-hepatic exposure: ritonavir-class (IC50 0.2 uM) fold 10.32x / stress 1.00 (cholestatic), itraconazole-class (IC50 10 mM) fold 1.00x (benign); Ki=IC50/2 pinned; organ cholestasis 1.00 matches the submodel.
 - **pathway->organ regeneration coupling + bilirubin ceiling**: at 0.1966 suppressed vs 0.1927 baseline vs 0.1892 stimulated max dead fraction with regen_scale clamped to [0.50, 1.50]; bilirubin capped at 2.00xULN while uncapped hits 3.00xULN. The blocked ERK/proliferation readout attenuates (never ablates) hepatocyte regeneration, tipping the same direct stress into more cell death (occupancy -> pathway -> organ -> phenotype).
@@ -243,12 +331,16 @@ Per-level status:
 - **Cheng-Prusoff IC50->Ki conversion**: measured IC50 -> Ki via Ki = IC50/(1 + [S]/Km); doc/10 P2 'never liter-wire IC50->Kd' is now code default assay convention [S]/Km = 1 sets Ki = IC50/2 (90.0 uM -> 45000 nM)
 - **Per-CYP hepatic kinetics (MM/Hill, abundance-scaled Vmax)**: source Vmax(CYP3A4)=7.800 mg/h from 7800 nmol content; low-dose CL=17.23 vs twin 17.89 L/h; doubling ratio=2.00; Hill/MM flux at 0.5Km=0.60, at 2Km=1.20
 - **Immune-mediated DILI QST (adaptive immune response via hapten hazard)**: I_ss=0.3333 (target 0.3333); active dead@72h=0.6800 vs base=0.4101; low-exposure immune=0.6660 < active=0.6666
+- **ChEMBL fingerprint-kNN resolver calibration (L15/L13/L12)**: leave-one-molecule-out on 16 snapshot targets, 3035 predictions: pooled Spearman 0.741, Pearson 0.745, within-2x of measured IC50 31.4%, median abs pC error 0.52 — positive correlation everywhere (a class-prior constant yields 0.0), so the resolver beats the prior monotonicity it replaces panel seam: 3/11 mapped sites structure-resolved for haloperidol (CYP2D6 inhibition, P-gp (MDR1), hERG (Kv11.1)); the remaining mapped sites sit in a chemotype desert (top-match 0.17-0.29) so no_public_data_sites = Androgen receptor, BSEP (cholestasis), CYP2C9 inhibition, CYP3A4 inhibition, Estrogen receptor, Glucocorticoid receptor, MRP3, MRP4, Mitochondrial complex I, Mitochondrial complex II, Mitochondrial complex III, Mitochondrial complex IV, Mitochondrial pyruvate carrier, OATP1B1 (disclosed class priors) CNS seam: haloperidol's supported worst-case prediction is 214.2 nM (structure-anchored), while a chemotype-desert molecule (e.g. dofetilide) yields no anchor and stays on the 0.20 class prior
+- **Mito/redox/ATP-floor DILI axes (closed-form + end-to-end differential)**: worst-case block 0.8333 == max of single-complex hits 0.8333; redox (ROS,GSH,net)@IC50 = (0.50,0.50,0.25); GSH floor binds at 0.15; ATP closed-forms 0.68/0.92; engaged dead_frac @72h: mito=0.4927, redox=0.3244, inert=0.0000; mint ATP mito=0.232 vs inert=1.000
 - **ACAT-lite multi-segment SI dissolution/absorption (model default-off; full fidelity auto-engages)**: feces single=13.89, 3seg=8.53, sol1=36.97, sol5=39.80, mass_err=0.0000, feces_diff=2.82
 - **E2E full-chain ADMET -> report integrity (trust mechanism)**: acetaminophen: Cmax 0.00967 mg/L, Fa 0.184, verdict No elevated composite risk detected; caffeine: Cmax 0.0256 mg/L, Fa 0.407, verdict High composite risk (63%, driver dili); anchors ['CKD-EPI 2021 race-free GFR baseline (R-6)', 'de Bruijn & Rietjens 2024 GCDCA bile-acid cholestasis PBK (R-7)', 'ADMET-AI BBB_Martins brain-partition head (R-4)', 'corpus-calibrated hERG P->KD sieve (R-8)']; BBB_Martins head wired; mechanism terms engaged ['tubular secretion', 'biliary excretion + enterohepatic recirculation', 'first-pass gut-wall extraction', 'saturable (Michaelis-Menten) hepatic clearance', 'TMDD target binding (native mass balance)', 'immune-mediated DILI axis', 'sympathetic-suppression cardiac branch', 'organ-feedback loop (coupled clearance)', 'multi-segment (ACAT) small-intestine absorption']; deterministic re-run matches.
 - **Native TMDD drug disposition (mass-balance coupling)**: mass-closed=50.00/50 mg, bound=1.259 mg; cleared(24h)=1.12 mg sink; retention 5 mg=0.78 vs 2000 mg=1.00 (dose-disproportional); <log10(DR/R vs D/Kd)>=-0.0088 (Kd=1.5 nM); AUC(bound)/AUC(twin)=0.08
 - **Multi-layer transdermal skin permeation (finite-dose membrane)**: mass=20.000/20 mg; J_obs/J_Fick=0.994; max partition deviation=0.003 log2; absorbed@6h thin=9.92 vs thick=4.01 mg; absorbed@1h slow=4.16 vs fast=8.29 mg
 - **Sympathetic suppression branch (beta-like Emax on HR and SV)**: C=IC50 -> CO/CO_base=0.2500 (target 0.25); saturating MAP=6.73 mmHg (floor 5.0); monotone over C/IC50 in [0.0, 0.1, 0.5, 1.0, 2.0, 10.0]
 - **D25/D26 predictive-regime reliability disclosure (DISCLAIMER §2)**: The trust record's reliability block is deterministic across repeated runs; the six regimes order a strictly-narrowing band CV (novel 0.60 > validated 0.20), so a weaker evidence axis can never report a tighter parameter band. A full measured-PK override upgrades the run to 'measured_in_range_on_label' and the run actually used the measured hepatic clearance (not a synthesized stand-in), which is the DISCLAIMER §2 target: given all true parameters, predict the real effect. Empirical disagreement is disclosed as fold-error / within-2x rows in the trust record and a written policy that disagreement is the expected state of the mechanistic model — never silently absorbed as a bug. The regime CV feeds the D21 parameter-ensemble uncertainty stage, so reliability and the reported uncertainty band stay coupled. Weight L1: this certifies honesty and self-consistency of the DISCLAIMER §2 bookkeeping; clinical accuracy remains the job of the L3 Tier-1 benchmark cases.
+- **Willmann 2007 allometric physiology (power-law + circulation closure)**: reference male: vena-cava return 5.63 L/min == CO 5.63 == lung flow; 140 kg power-law max rel. err 0.00e+00; female anatomy max rel. err 0.00e+00; flow doubling kidney->2.000, liver->2.000, brain->2.000
+- **Published-PK endpoint GMFE/APE benchmark (L25)**: midazolam: cl_plasma_l_h=1.36x acetaminophen: cl_plasma_l_h=1.85x; t_half_h=2.49x; f_abs=1.58x warfarin: cl_plasma_l_h=1.00x; vss_l=1.00x; t_half_h=1.10x ciprofloxacin: cl_plasma_l_h=1.07x; t_half_h=1.03x; f_abs=1.03x dofetilide: cl_plasma_l_h=1.43x; t_half_h=1.23x; f_abs=1.33x 13 compound-metric pairs; pooled GMFE 1.30x, mean APE 58% (band-midpoint), 92% within the 2x band; the single >2x pair is acetaminophen/t_half_h at 2.5x — disclosed as a slow-terminal-phase over-estimate (not tuned away). Profile-level GMFE (digitised measured plasma curves) is NOT shipped: only published endpoint bands are vendored, so only endpoint-level fold error is claimed here and in doc/12 L25.
 
 ## Tier-1 geometric-mean fold error (L3 asserted metrics)
 

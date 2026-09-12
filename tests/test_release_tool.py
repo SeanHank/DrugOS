@@ -182,6 +182,90 @@ def test_marker_tokens_in_recognizes_g2_typing_path() -> None:
     assert release.marker_tokens_in(f"a {f_stub}bed-out {f_ph} remains") != []
 
 
+def test_unrealized_markers_in_detects_status_vocab() -> None:
+    # Status-word literals are assembled from fragments so this G7 detector
+    # test carries none of the wording it is pinning open in the test file.
+    f_planned = "p" + "lanned"
+    f_blocked = "bl" + "ocked"
+    f_partial = "parti" + "al"
+    f_pending = "pen" + "ding"
+    f_candidate = "can" + "didate"
+    f_future = "fu" + "ture"
+    f_roadmap = "road" + "map"
+    f_not_downloaded = "not " + "downloaded"
+    f_out_of_scope = "out of " + "scope"
+    f_phase8 = "Phase-" + "8"
+    f_release_track = "Release-" + "Track"
+    f_p5 = "P" + "5"
+    assert f_planned in release.unrealized_markers_in("the lane is " + f_planned)
+    assert f_blocked in release.unrealized_markers_in("the dependency is " + f_blocked)
+    assert f_partial in release.unrealized_markers_in("a " + f_partial + "ly wired seam")
+    assert f_pending in release.unrealized_markers_in(f_pending + " dataset")
+    assert f_candidate in release.unrealized_markers_in("an upstream " + f_candidate + " vendor")
+    assert f_future in release.unrealized_markers_in(f_future + " work")
+    assert f_roadmap in release.unrealized_markers_in("the " + f_roadmap)
+    assert "phrase 'not downloaded'" in release.unrealized_markers_in(
+        f_not_downloaded + " (see row 9)"
+    )
+    assert "phrase 'out of scope'" in release.unrealized_markers_in(f_out_of_scope)
+    assert "phrase 'phase 8'" in release.unrealized_markers_in(f_phase8 + " coupling")
+    assert "phrase 'release track'" in release.unrealized_markers_in(f_release_track + " register")
+    assert "phrase 'P5'" in release.unrealized_markers_in(f_p5 + "-P9 lanes")
+
+
+def test_unrealized_markers_in_ignores_scientific_prose() -> None:
+    # Scientific language that legitimately uses the substrings is untouched:
+    # the gate pins the status sense, not the channel-block physiology.
+    assert release.unrealized_markers_in("hERG channel block reserves IKr") == []
+    assert release.unrealized_markers_in("beta-blockers and non-blockers") == []
+    assert release.unrealized_markers_in("the fractional IKr conductance") == []
+    assert release.unrealized_markers_in("shipped and wired in 2026.9.1") == []
+    assert release.unrealized_markers_in("blockade of hERG") == []
+    assert release.unrealized_markers_in("forwards to the next stage") == []
+    assert release.unrealized_markers_in("the regulator publishes guidance") == []
+
+
+def test_docs_truth_audit_exempts_citation_surface(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The citation/license surface is read-only attribution (the G6/G7 red
+    # line): a cited work's real title may use any wording without becoming a
+    # claim about this product, and the gate must not require it to be
+    # rewritten.
+    f_planned = "p" + "lanned"
+    f_out_of_scope = "out of " + "scope"
+    doc = tmp_path / "chip.md"
+    doc.write_text(
+        "# Chip\n"
+        f"The lane is {f_planned}, an {f_out_of_scope} seam.\n"
+        "Every row below is wired.\n"
+        "\n"
+        "## References\n"
+        f"Braun, C. (2026). The {f_planned} readout. J. C:\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(release, "ROOT", tmp_path)
+    monkeypatch.setattr(release, "_doc_scope_files", lambda: [("doc", doc)])
+    monkeypatch.setattr(release, "verify_doc_claims", lambda: [])
+    violations = release.docs_truth_audit()
+    assert any(":2:" in v for v in violations), violations
+    assert all(":6:" not in v for v in violations), violations
+
+
+def test_docs_truth_audit_real_scope_clean() -> None:
+    # G7 across the whole shipped docs set: every document describes only
+    # realized, wired behaviour, and every back-ticked claim in doc/12
+    # resolves to a real src/drugos symbol, registered validation case, or
+    # manifest-pinned file.
+    violations = release.docs_truth_audit()
+    assert violations == [], "\n".join(violations)
+
+
+def test_verify_doc_claims_real_register_clean() -> None:
+    violations = release.verify_doc_claims()
+    assert violations == [], f"{len(violations)} unbacked claims:\n" + "\n".join(violations)
+
+
 def test_gate_log_has_header_and_passed_marker(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -191,6 +275,7 @@ def test_gate_log_has_header_and_passed_marker(
     monkeypatch.setattr(release, "verify_data_checksums", lambda: None)
     monkeypatch.setattr(release, "fallback_audit", lambda: [])
     monkeypatch.setattr(release, "no_deferral_audit", lambda: [])
+    monkeypatch.setattr(release, "docs_truth_audit", lambda: [])
     commands: list[list[str]] = []
 
     def fake_run_cmd(log_path: Path, label: str, cmd: Sequence[str], **_kwargs: object) -> int:
@@ -208,6 +293,7 @@ def test_gate_log_has_header_and_passed_marker(
     assert "G4 validation suite" in text
     assert "fallback audit: clean" in text
     assert "marker audit: clean" in text
+    assert "docs-truth audit: clean" in text
     assert text.endswith("ALL GATES PASSED\n")
     g3 = next(c for c in commands if len(c) >= 3 and c[2] == "pytest")
     assert g3 == [release.python(), "-m", "pytest"]
@@ -220,6 +306,7 @@ def test_run_gates_uses_xdist_when_enabled(tmp_path: Path, monkeypatch: pytest.M
     monkeypatch.setattr(release, "verify_data_checksums", lambda: None)
     monkeypatch.setattr(release, "fallback_audit", lambda: [])
     monkeypatch.setattr(release, "no_deferral_audit", lambda: [])
+    monkeypatch.setattr(release, "docs_truth_audit", lambda: [])
     commands: list[list[str]] = []
     monkeypatch.setattr(
         release,

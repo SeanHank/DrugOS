@@ -60,6 +60,7 @@ def model_file() -> Path:
 
 _SAFE_MATH = frozenset({"pow", "exp", "sqrt", "log", "sin", "cos", "tan", "log10"})
 _INPUT_SPECIES = "E1"
+_READOUT_SPECIES = "PP_K"
 
 
 def _rate(expr: str, spec: SbmlSpec, mods: dict[str, float]) -> float:
@@ -222,13 +223,16 @@ def simulate_sbml_pathway(
     signal: NDArray,
     path: Path | None = None,
     n_eval: int = 601,
+    input_species: str = _INPUT_SPECIES,
+    readout: str = _READOUT_SPECIES,
 ) -> PathwayResult:
-    """Drive the vendored Huang MAPK cascade and return a :class:`PathwayResult`.
+    """Drive a vendored SBML scaffold and return a :class:`PathwayResult`.
 
     ``signal`` (per-occupancy 0..1 over ``t_h``) scales the pathway stimulus
-    down: effective activator ``E1(t) = E1_0 * (1 - s(t))``, an upstream
-    inhibition.  The readout is doubly-phosphorylated ERK (``PP_K``) — the
-    canonical cascade output.  Baseline is the drug-free steady state, so
+    down: effective input ``<input_species>`` becomes ``X_0 * (1 - s(t))``,
+    an upstream inhibition.  ``readout`` selects which species backs the
+    canonical output; the default scaffold's is doubly-phosphorylated ERK
+    (``PP_K``).  Baseline is the drug-free steady state, so
     ``PathwayResult.readout_fold_change`` reports signal gain (inhibition shows
     as ``< 1`` for increasing signal).
     """
@@ -236,6 +240,10 @@ def simulate_sbml_pathway(
     if not p.is_file():
         raise FileNotFoundError(f"vendored SBML model missing: {p}")
     spec = parse_sbml(p)
+    if input_species not in spec.species:
+        raise KeyError(f"SBML model has no input species {input_species!r}")
+    if readout not in spec.species:
+        raise KeyError(f"SBML model has no readout species {readout!r}")
 
     t = np.asarray(t_h, dtype=float)
     s = np.asarray(signal, dtype=float)
@@ -243,19 +251,19 @@ def simulate_sbml_pathway(
         raise ValueError("t_h and signal must be equal-length 1-D arrays")
 
     names = sorted(spec.species)
-    e1_0 = spec.species[_INPUT_SPECIES]
-    terms, _input_refs = _build_term_lists(spec, names, _INPUT_SPECIES)
+    x_0 = spec.species[input_species]
+    terms, _input_refs = _build_term_lists(spec, names, input_species)
 
     baseline = _steady_state(names, spec, terms)
 
-    # Signal-dependent term builder: substitute E1 -> E1_0*(1-s) at run time.
+    # Signal-dependent term builder: substitute input -> X_0*(1-s) at run time.
     def rhs_for(s_frac: float) -> Callable[[float, NDArray], NDArray]:
-        e1_eff = e1_0 * (1.0 - s_frac)
+        x_eff = x_0 * (1.0 - s_frac)
 
         def rhs(t: float, y: np.ndarray[tuple[int], np.dtype[np.float64]]) -> NDArray:
             del t
             mods = {n: float(y[i]) for i, n in enumerate(names)}
-            mods[_INPUT_SPECIES] = e1_eff
+            mods[input_species] = x_eff
             dydt = np.zeros_like(y)
             for n, tlist in terms.items():
                 total = sum(_rate(e, spec, mods) for e in tlist)
@@ -279,7 +287,7 @@ def simulate_sbml_pathway(
     from drugos.pathway.graph import PathwayModel
 
     model = PathwayModel(
-        name=spec.name, species=dict(spec.species), input_node="signal", readout="PP_K"
+        name=spec.name, species=dict(spec.species), input_node="signal", readout=readout
     )
     return PathwayResult(
         model=model,

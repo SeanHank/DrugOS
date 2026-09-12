@@ -110,7 +110,7 @@ def test_full_chain_handoff_integrity_and_trust() -> None:
     assert any("cholestasis" in a for a in trust["anchors_wired"])
     assert any("CKD-EPI" in a for a in trust["anchors_wired"])
     assert any("BBB_Martins" in a for a in trust["anchors_wired"])
-    assert len(trust["class_prior_sites"]) >= 1
+    assert len(trust["no_public_data_sites"]) >= 1
     assert "raw" not in (trust["admet_ml_estimates"] or [])
     engaged = trust["mechanism_terms_engaged"]
     # Full-fidelity auto-engages the route-applicable ADME/physiology terms.
@@ -179,7 +179,7 @@ def test_full_chain_two_compounds_generic() -> None:
     for c in (c1, c2):
         assert c["pk"]["cmax_mg_l"] > 0.0
         assert 0.0 < c["pk"]["bioavailability_f"] <= 1.0
-        assert c["trust"]["class_prior_sites"]
+        assert c["trust"]["no_public_data_sites"]
         assert len(c["trust"]["mechanism_terms_engaged"]) >= 5
         assert c["trust"]["mechanism_terms_degraded"] == []
 
@@ -297,7 +297,7 @@ def test_fidelity_provenance_mixed_confidence_panel() -> None:
     )
     prov = fidelity_provenance(spec, exposure)
     assert prov["fidelity"] == "full"
-    assert prov["class_prior_sites"] == ["low"]
+    assert prov["no_public_data_sites"] == ["low"]
 
 
 def test_fidelity_provenance_admet_none() -> None:

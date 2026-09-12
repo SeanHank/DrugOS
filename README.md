@@ -13,7 +13,7 @@ the whole biology on the way rendered as equations you can read.
 
 <p align="center">
   <a href="https://www.python.org/downloads/"><img alt="Python 3.11+" src="https://img.shields.io/badge/Python-3.11%2B-4b7bec?logo=python&logoColor=fff&labelColor=232946"></a>
-  <a href="#validation--quality-gates"><img alt="Validation 38/38" src="https://img.shields.io/badge/validation-38%2F38%20green-2acc74?style=flat"></a>
+  <a href="#validation--quality-gates"><img alt="Validation 45/45" src="https://img.shields.io/badge/validation-45%2F45%20green-2acc74?style=flat"></a>
   <a href="#validation--quality-gates"><img alt="Coverage 100%" src="https://img.shields.io/badge/Coverage-100%25-2acc74?style=flat"></a>
   <a href="https://github.com/"><img alt="AGPL-3.0" src="https://img.shields.io/badge/License-AGPL--3.0-5865f2?style=flat"></a>
   <a href="doc/09-quality-gate.md"><img alt="Lint" src="https://img.shields.io/badge/Lint-ruff%20+%20mypy%20--strict-9855e2?style=flat"></a>
@@ -68,7 +68,7 @@ Pathway    signal transduction (QSP ODEs — Huang/Levchenko SBML MAPK cascade)
 | **Organ — CNS** | brain free exposure trajectory | passive blood–brain barrier model |
 | **Clinical** | graded biomarkers + composite verdict | three-line fusion (mechanistic / exposure / structural) |
 | **Decision** | 90 % uncertainty bands · cohort incidence · Sobol/OAT sensitivity · prospective anchoring | D21–D24 ensembles over the full pipeline |
-| **Reliability** | predictive-regime disclosure on every run (`trust.reliability`: novel < partial < off-label/extrapolated dose < validated in-range < measured), regime-driven ensemble breadth, measured true-parameter overrides, observed-vs-predicted agreement rows (`trust.empirical_agreement`) | `reliability.py` (DISCLAIMER §2 made executable — doc/12 §7.3) |
+| **Reliability** | predictive-regime disclosure on every run (`trust.reliability`: novel < some measured PK < off-label/extrapolated dose < validated in-range < measured), regime-driven ensemble breadth, measured true-parameter overrides, observed-vs-predicted agreement rows (`trust.empirical_agreement`) | `reliability.py` (DISCLAIMER §2 made executable — doc/12 §7.3) |
 
 ## Try it in under a minute
 
@@ -172,7 +172,7 @@ estimator that re-derives every clearance/AUC result in the R runtime (R-1,
 agreement gated ≤ 2 %).
 
 `validation/` holds the tier ladder; `python validation/run_validation.py`
-regenerates `validation/report.md` (currently **38/38 cases green**):
+regenerates `validation/report.md` (currently **45/45 cases green**):
 
 | Tier | Case | Checks |
 |---|---|---|
@@ -205,7 +205,7 @@ runs G1–G4 and a **no-silent-fallback audit**:
 - **G2** mypy `--strict` across `src/drugos` — no errors
 - **G3** pytest with **100 % branch coverage** of `src/drugos`, no
   exclusions
-- **G4** validation suite — 38/38 green, report regenerated
+- **G4** validation suite — 45/45 green, report regenerated
 - **G5** fallback audit — every `except` handler in the package must surface an
   explicit error; silent swallowing is a hard failure (inventory pinned in
   `scripts/fallback_allowlist.json`)
@@ -263,7 +263,7 @@ Start with `doc/01-project-overview.md`, then `doc/05-methodology-pipeline.md`:
 
 `doc/01` overview · `doc/02` data & datasets · `doc/03` system architecture ·
 `doc/04` module design · `doc/05` methodology & pipeline · `doc/06` tech stack ·
-`doc/07` roadmap · `doc/08` scope & limits · `doc/09` quality gate ·
+`doc/07` realization · `doc/08` scope & limits · `doc/09` quality gate ·
 `doc/10` dataset comparability · `doc/11` download status ·
 `doc/12` production-validated model matrix
 

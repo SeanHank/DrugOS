@@ -63,6 +63,28 @@ def test_missing_model_file_raises() -> None:
         simulate_sbml_pathway(t, np.zeros_like(t), path=Path("/no/such/file.xml"))
 
 
+def test_unknown_input_species_raises() -> None:
+    with pytest.raises(KeyError, match="input species"):
+        simulate_sbml_pathway(_time_axis(), np.zeros(200), input_species="NO_SUCH_INPUT", n_eval=20)
+
+
+def test_unknown_readout_raises() -> None:
+    with pytest.raises(KeyError, match="readout species"):
+        simulate_sbml_pathway(_time_axis(), np.zeros(200), readout="NO_SUCH_READOUT", n_eval=20)
+
+
+def test_custom_scaffold_input_and_readout_runs() -> None:
+    pts = Path(__file__).resolve().parents[1] / "data" / "models" / "rohwer2000-pts.xml"
+    t = np.linspace(0.0, 200.0, 240)
+    res = simulate_sbml_pathway(
+        t, np.zeros_like(t), path=pts, input_species="PEP", readout="Pyr", n_eval=120
+    )
+    assert res.model.readout == "Pyr"
+    assert "PEP" in res.model.species
+    assert res.baseline["Pyr"] > 0
+    assert len(res.concentrations) == 17
+
+
 def test_mismatched_time_signal_lengths_raise() -> None:
     with pytest.raises(ValueError, match="equal-length"):
         simulate_sbml_pathway(np.linspace(0.0, 72.0, 100), np.zeros(80), n_eval=20)

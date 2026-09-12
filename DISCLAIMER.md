@@ -47,8 +47,7 @@ following:
   (CKD-EPI GFR R-6, de Bruijn & Rietjens bile-acid cholestasis PBK R-7,
   ADMET-AI BBB_Martins R-4, corpus-calibrated hERG P→KD sieve R-8), which
   ADMET-AI heads contributed, which target sites still fall back to class
-  priors, and that no term outside the record contributes to any readout
-  (P5–P9 are planned release tracks in `doc/07`; none is a runtime entry). A
+  priors, and that no term outside the record contributes to any readout. A
   run never reports more confidence than its disclosed composition supports;
   the G5 no-silent-fallback rule is part of that contract.
 - An end-to-end validation case drives the real full chain per run —
@@ -71,8 +70,7 @@ following:
   baseline exactly (`doc/12 §6` L1–L11).
 - The shipped lane realizes the validated baselines directly: class-median
   priors for non-hERG panel sites, GFR-based renal elimination as the renal
-  default (the deeper nephron model is a planned release in `doc/07` P7),
-  lumped-compartments ACAT-family intestinal absorption as the absorption
+  default, lumped-compartments ACAT-family intestinal absorption as the absorption
   default, and the in-house Mito/redox/cell-death liver axes that flank the
   validated cholestasis anchor — each implemented, engaged and covered by its
   own G4 case, and none a retained stand-in. The G6 gate
@@ -89,8 +87,7 @@ following:
   disclosed). The license-restricted external engines (DILIsym, CMR nephron,
   Physiome/Reactome scaffolds, PK-Sim physiology) are never linked into the
   runtime; their workflows are addressed by the in-house implementations
-  documented in `doc/12`, and each planned release-track engine in `doc/07`
-  P5–P9 is gated by an L2 equivalence case before admission (G4).
+  documented in `doc/12`.
 - Real drugs interact with biology in ways any finite model — including the
   integrated production-validated components — does not represent. Integrating
   a trusted model does not make the integrated prediction trustworthy.
@@ -102,8 +99,8 @@ following:
   a mechanistic model, not a bug.
 - Every run is classified into a **predictive regime** (weakest evidence axis
   dominates) and the trust record carries that disclosure
-  (`trust.reliability`): `novel_molecule` < `partial_evidence` <
-  `validated_offlabel_route` / `validated_extrapolated_dose` <
+  (`trust.reliability`): `novel_molecule` < a run with some measured
+  PK < `validated_offlabel_route` / `validated_extrapolated_dose` <
   `validated_in_range_on_label` < `measured_in_range_on_label`. The regime
   sets a recommended parameter-ensemble CV, so a weakly-evidenced run reports
   a correspondingly wider uncertainty band, never a tighter one (`doc/12

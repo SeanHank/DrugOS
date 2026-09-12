@@ -93,15 +93,15 @@ All four dimensions combine arbitrarily (any structure x any route x any dose x 
 - Adult healthy and common-disease virtual populations
 - Measured true-parameter overrides (`--measured`) and observed-clinical-data comparison (`--empirical`): both enter the exact same full-fidelity pipeline, and every run discloses its predictive regime / reliability band (DISCLAIMER §2, `doc/12 §7.3`)
 
-**Explicitly out of scope for the 2026.9.1 baseline (planned for later releases):**
+**Design exclusions recorded for the 2026.9.1 baseline:**
 - Biologics/antibodies (require FcRn, immunogenicity sub-models)
 - Multi-drug interaction networks beyond a single co-administered pair
 - 3D spatial (finite-element) organ models; the system uses lumped-compartment organ models (the arbitrary input configurability in section 3.1 applies to model *inputs*; the modeled physiology depth may be expanded in later releases)
 
-> Every shipped baseline default and every planned release target is announced
+> Every shipped baseline default is announced
 > openly: the `fidelity="baseline"` lane is an explicit opt-out whose real-range
-> defaults are disclosed in its contract, and `doc/07` carries the planned
-> release tracks (P5–P9) with their admission gates; nothing is dropped
+> defaults are disclosed in its contract, and `doc/12 §6` carries every shipped
+> item's status with the evidence that certified it; nothing is dropped
 > silently (G5). Full `fidelity` runs engage every realism term with a
 > disclosed auto-anchor and
 > fail closed (`RealismError`) when a term cannot engage.
